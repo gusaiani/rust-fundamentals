@@ -14,21 +14,14 @@ enum Command {
     Total {
         category: Option<String>,
     },
+    Delete {
+        index: usize,
+    },
     Help,
     Quit,
 }
 
-/// Parse a line of user input into a Command.
-///
-/// Expected formats:
-///   add <amount> <category> <description...>
-///   list
-///   total [category]
-///   help
-///   quit
-///
-/// TODO: Split the input, match on the first word, and construct the right variant.
-/// Return None if the input is invalid.
+
 fn parse_command(input: &str) -> Option<Command> {
     let input = input.trim();
     if input.is_empty() {
@@ -43,6 +36,11 @@ fn parse_command(input: &str) -> Option<Command> {
         "quit" | "q" => Some(Command::Quit),
         "help" | "h" => Some(Command::Help),
         "list" | "ls" => Some(Command::List),
+        "delete" | "del" | "rm" => {
+            // .parse::<usize>() returns Result; .ok() → Option, ? bails in None
+            let index = rest.parse::<usize>().ok()?;
+            Some(Command::Delete { index })
+        }
         // TODO: Implement "add" parsing.
         //   1. Split `rest` into at most 3 parts: amount, category, description
         //   2. Parse amount as f64
@@ -152,6 +150,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match category {
                     Some(cat) => println!("Total for [{cat}]: ${total:.2}"),
                     None => println!("Total: ${total:.2}"),
+                }
+            }
+            Command::Delete { index } => {
+                if index >= expenses.len() {
+                    println!("No expense at index {index}.")
+                } else {
+                    // .remove() shifts later items down and returns the removed value
+                    let removed = expenses.remove(index);
+                    println!("Deleted: {removed}");
+                    if let Err(e) = save_expenses(&expenses) {
+                        eprintln!("Warning. failed to save: {e}")
+                    }
                 }
             }
         }
