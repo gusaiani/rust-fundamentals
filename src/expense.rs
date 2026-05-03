@@ -29,25 +29,29 @@ impl fmt::Display for Expense {
 
 const FILE_PATH: &str = "expenses.json";
 
-/// Load expenses from the JSON file.
-/// If the file doesn't exist, return an empty Vec.
-/// TODO: Read the file and deserialize with serde_json.
 pub fn load_expenses() -> Result<Vec<Expense>, Box<dyn std::error::Error>> {
     if !Path::new(FILE_PATH).exists() {
         return Ok(Vec::new());
     }
-    todo!()
+    let data = std::fs::read_to_string(FILE_PATH)?;
+    let expenses: Vec<Expense> = serde_json::from_str(&data)?;
+    Ok(expenses)
 }
 
-/// Save expenses to the JSON file.
-/// TODO: Serialize to pretty JSON and write to the file.
 pub fn save_expenses(expenses: &[Expense]) -> Result<(), Box<dyn std::error::Error>> {
-    todo!()
+    let json = serde_json::to_string_pretty(expenses)?;
+    std::fs::write(FILE_PATH, json)?;
+    Ok(())
 }
 
-/// Calculate total spending, optionally filtered by category.
-/// If category is None, sum all expenses.
-/// TODO: Use iterator methods — .iter().filter().map().sum()
 pub fn total_by_category(expenses: &[Expense], category: Option<&str>) -> f64 {
-    todo!()
+    expenses
+        .iter()
+        // keep an expense if no filter is set, OR its category matches
+        .filter(|e| match category {
+            None => true,
+            Some(c) => e.category == c,
+        })
+        .map(|e| e.amount)
+        .sum()
 }

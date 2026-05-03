@@ -1,0 +1,12 @@
+[
+  {
+    "description": "Coffee",
+    "amount": 4.5,
+    "category": "food"
+  },
+  {
+    "description": "Uber to office",
+    "amount": 12.0,
+    "category": "transport"
+  }
+]
