@@ -1,270 +1,88 @@
-# Rust in 5-Minute Pills
+# Rust Engineering Course
 
-## Goal
-Go from zero to writing a working CLI tool in Rust, one short pill at a time.
+A project-based course to go from zero to a $250k+ remote Rust engineer, working from Brazil.
 
-## Time estimate
-~3 hours total (15-20 pills × 5 minutes each)
+**Goal:** Build real, portfolio-worthy systems every module. No toy examples after the first one. The kind of work that gets shortlisted at databases, infra, fintech, and AI-infra companies.
 
-## What you'll learn
-- Ownership, borrowing, and lifetimes — Rust's core mental model
-- Pattern matching and enums as a replacement for null/exceptions
-- Structs, traits, and impl blocks
-- Error handling with `Result` and `Option`
-- Iterators and closures
-- Reading files and CLI arguments
-- Building a real tool: a personal expense tracker CLI
+---
 
-## Concepts
+## Roadmap
 
-### Pill 1: Hello, Cargo
-Rust's build tool is `cargo`. Every project is a "crate."
+| # | Module | Key Skills | Project | Status |
+|---|--------|------------|---------|--------|
+| 01 | [Rust Fundamentals](./01-rust-fundamentals/) | Ownership, borrowing, enums, `Option`/`Result`, iterators, serde, file I/O | Expense tracker CLI | ✅ |
+| 02 | [Ownership, Types & Traits](./02-ownership-types-traits/) | Lifetimes, generics, trait bounds, dynamic dispatch, `Box`/`Rc`/`Arc`, interior mutability | Type-safe state machine library | ⬜ |
+| 03 | [Idiomatic Error Handling & API Design](./03-error-handling-api-design/) | `thiserror`, `anyhow`, error enums, newtype patterns, builder pattern, public API ergonomics | A small open-source crate, published to crates.io | ⬜ |
+| 04 | [Concurrency & Parallelism](./04-concurrency/) | Threads, `Send`/`Sync`, channels (`mpsc`, `crossbeam`), `Mutex`/`RwLock`, work-stealing, `rayon` | Parallel log analyzer | ⬜ |
+| 05 | [Async Rust & Tokio](./05-async-tokio/) | Futures, pinning, executors, `tokio` runtime, `select!`, cancellation, structured concurrency | Async port scanner / TCP proxy | ⬜ |
+| 06 | [Web Services in Rust](./06-web-services/) | `axum`, `tower`, `sqlx` (Postgres), migrations, JWT auth, request validation, OpenAPI | Production-grade REST API with auth & Postgres | ⬜ |
+| 07 | [Systems Programming](./07-systems-programming/) | TCP/UDP from scratch, custom binary protocols, `mio`, file I/O, memory mapping, signals | Implement a wire protocol (Redis RESP or HTTP/1.1) | ⬜ |
+| 08 | [Performance Engineering](./08-performance/) | `criterion` benchmarks, `perf`/`flamegraph`, allocation profiling, zero-copy, SIMD, branch prediction | Optimize a real codebase from baseline → 10×+ | ⬜ |
+| 09 | [Unsafe Rust & FFI](./09-unsafe-ffi/) | `unsafe` invariants, raw pointers, `repr(C)`, `bindgen`, calling Rust from C and vice versa | Rust library with C ABI, consumed by a C/Python program | ⬜ |
+| 10 | [Database Internals](./10-database-internals/) | B-trees, LSM trees, WAL, MVCC, page cache, query planning | Mini key-value store with persistence and crash safety | ⬜ |
+| 11 | [Distributed Systems](./11-distributed-systems/) | gRPC (`tonic`), protobuf, Raft basics, replication, partitioning, consistent hashing | Replicated KV store on top of Module 10 | ⬜ |
+| 12 | [Production & Observability](./12-production/) | `tracing`, OpenTelemetry, metrics (Prometheus), structured logging, Docker, graceful shutdown, CI/CD | Containerized service with full observability | ⬜ |
+| 13 | [Capstone](./13-capstone/) | Everything | Ship one polished, deployed Rust service that demonstrates the full stack | ⬜ |
+
+---
+
+## How to use this course
+
+1. **Do modules in order.** Each builds on the last.
+2. **Ship every module.** Public repo, README, screenshots, a short writeup. The portfolio is the point.
+3. **Read the standard library docs.** They are the best Rust resource. Get fluent navigating them.
+4. **Don't skip benchmarks.** From Module 4 onward, every project should have at least one benchmark that proves it does what it claims.
+
+---
+
+## Stack
+
+- **Language:** Rust (stable, latest edition)
+- **Async runtime:** `tokio`
+- **Web:** `axum` + `tower`
+- **DB:** Postgres via `sqlx`; custom storage in Module 10
+- **Tracing/metrics:** `tracing` + OpenTelemetry + Prometheus
+- **Bench:** `criterion`
+- **Deploy:** Docker + Fly.io / Railway / Hetzner (cheap and globally reachable)
+
+---
+
+## Setup
 
 ```bash
-# You already have this crate — just run:
-cargo run
+# Install Rust via rustup
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Useful tooling
+rustup component add clippy rustfmt
+cargo install cargo-watch cargo-edit cargo-expand
 ```
 
-The entry point is always `fn main()` in `src/main.rs`. Rust compiles to a native binary — no runtime, no VM.
+Each module is its own Cargo project — `cd` into it and `cargo run` / `cargo test`.
 
-### Pill 2: Variables and Mutability
-Variables are **immutable by default**. You opt into mutability.
+---
 
-```rust
-let x = 5;        // immutable
-let mut y = 10;   // mutable — can be reassigned
-y = 20;           // ok
-// x = 6;         // compile error!
-```
+## Career strategy (Brazil → $250k+ remote)
 
-`let` bindings can shadow previous ones — this is idiomatic:
-```rust
-let x = "42";
-let x: i32 = x.parse().unwrap(); // shadow with a new type
-```
+The $250k+ Rust market is real but narrow. The pattern that works:
 
-### Pill 3: Types and Functions
-Rust is statically typed. Type annotations use `:` after the name.
+- **Target the right companies.** Database/infra (TigerBeetle, ClickHouse, Materialize, Turso), fintech/crypto infra (Solana, Aptos, Polygon, Jump, Jane Street-adjacent), AI infra (Modal, Hugging Face, Anyscale, Together), edge/cloud (Cloudflare, Fastly, Discord), trading firms with remote desks.
+- **Skip generic "Rust backend" gigs.** They top out around $150k. The premium is paid for systems depth: storage, networking, performance, distributed systems.
+- **Portfolio over resume.** A single deeply-engineered project (a working KV store, a custom protocol, a service that survives a load test) is worth more than five CRUD apps.
+- **Open-source contribution.** A merged PR to `tokio`, `axum`, `sqlx`, or a database crate is a hiring signal that beats most credentials.
+- **Where to look:** `rustjobs.dev`, `weworkremotely.com`, `wellfound.com`, company careers pages directly. Avoid recruiter-saturated boards.
+- **Comp model:** PJ contractor at $100–150/hr USD, or full-time remote $200–280k base + equity. Most $250k+ offers are at AI infra or crypto.
+- **Resume keywords that matter:** `tokio`, `axum`, `sqlx`, distributed systems, gRPC, performance optimization, low-latency, observability, Linux internals.
 
-```rust
-fn add(a: i32, b: i32) -> i32 {
-    a + b  // no semicolon = this is the return value
-}
-```
+After Module 8, hireable for a senior Rust role. After Module 12, hireable for staff-level / specialized infra roles where the $250k+ band lives.
 
-Common types: `i32`, `f64`, `bool`, `String`, `&str` (string slice), `Vec<T>`, `Option<T>`, `Result<T, E>`.
-
-### Pill 4: Ownership — The Big Idea
-Every value has exactly **one owner**. When the owner goes out of scope, the value is dropped (freed).
-
-```rust
-let s1 = String::from("hello");
-let s2 = s1;          // s1 is MOVED to s2
-// println!("{s1}");   // compile error — s1 is gone
-println!("{s2}");      // ok
-```
-
-This is how Rust avoids garbage collection AND use-after-free. No runtime cost.
-
-### Pill 5: Borrowing
-Instead of moving, you can **borrow** with `&`:
-
-```rust
-fn print_len(s: &String) {  // borrows s, doesn't own it
-    println!("len = {}", s.len());
-}
-
-let s = String::from("hello");
-print_len(&s);    // lend s
-println!("{s}");   // still valid — we only lent it
-```
-
-Rules: you can have **many `&T`** (shared borrows) OR **one `&mut T`** (exclusive borrow), never both at the same time.
-
-### Pill 6: Structs
-```rust
-struct Expense {
-    description: String,
-    amount: f64,
-    category: String,
-}
-
-impl Expense {
-    fn new(description: &str, amount: f64, category: &str) -> Self {
-        Self {
-            description: description.to_string(),
-            amount,
-            category: category.to_string(),
-        }
-    }
-}
-```
-
-### Pill 7: Enums and Pattern Matching
-Enums in Rust can hold data — they replace union types, nulls, and exceptions.
-
-```rust
-enum Command {
-    Add { description: String, amount: f64, category: String },
-    List,
-    Total,
-    Quit,
-}
-```
-
-Use `match` to handle every variant — the compiler forces exhaustiveness:
-```rust
-match command {
-    Command::Add { description, amount, category } => { /* ... */ }
-    Command::List => { /* ... */ }
-    Command::Total => { /* ... */ }
-    Command::Quit => break,
-}
-```
-
-### Pill 8: Option and Result
-Rust has no `null`. Instead:
-
-```rust
-// Option<T> = Some(value) | None
-let maybe: Option<i32> = "42".parse().ok();
-
-// Result<T, E> = Ok(value) | Err(error)
-let result: Result<i32, _> = "42".parse();
-```
-
-The `?` operator propagates errors — like early return on Err:
-```rust
-fn read_file(path: &str) -> Result<String, std::io::Error> {
-    let content = std::fs::read_to_string(path)?; // returns Err if it fails
-    Ok(content)
-}
-```
-
-### Pill 9: Vectors and Iterators
-```rust
-let expenses = vec![100.0, 50.0, 75.0];
-
-// Iterator chain — lazy, zero-cost abstraction
-let total: f64 = expenses.iter().sum();
-let big: Vec<&f64> = expenses.iter().filter(|&&x| x > 60.0).collect();
-```
-
-Common iterator methods: `.map()`, `.filter()`, `.find()`, `.any()`, `.fold()`, `.collect()`.
-
-### Pill 10: String Types
-Two main string types:
-- `String` — owned, heap-allocated, growable
-- `&str` — borrowed slice, usually a reference into a `String` or a string literal
-
-```rust
-let owned: String = String::from("hello");
-let slice: &str = &owned;        // borrow as slice
-let literal: &str = "hello";     // string literals are &str
-```
-
-Rule of thumb: accept `&str` in function parameters, store `String` in structs.
-
-### Pill 11: Reading User Input
-```rust
-use std::io::{self, Write};
-
-fn prompt(msg: &str) -> String {
-    print!("{msg}");
-    io::stdout().flush().unwrap();
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().to_string()
-}
-```
-
-### Pill 12: File I/O and Serde
-For persistence, we'll use JSON via the `serde` crate:
-
-```rust
-// In Cargo.toml:
-// [dependencies]
-// serde = { version = "1", features = ["derive"] }
-// serde_json = "1"
-
-use serde::{Serialize, Deserialize};
-
-#[derive(Serialize, Deserialize)]
-struct Expense {
-    description: String,
-    amount: f64,
-    category: String,
-}
-```
-
-Then save/load:
-```rust
-let json = serde_json::to_string_pretty(&expenses)?;
-std::fs::write("expenses.json", &json)?;
-
-let data = std::fs::read_to_string("expenses.json")?;
-let expenses: Vec<Expense> = serde_json::from_str(&data)?;
-```
-
-## Project: Expense Tracker CLI
-
-A command-line expense tracker that reads commands interactively, stores expenses in a JSON file, and prints summaries. Something you'd actually use day-to-day.
-
-### Requirements
-1. Add an expense with a description, amount, and category
-2. List all expenses in a formatted table
-3. Show total spending, optionally filtered by category
-4. Persist expenses to `expenses.json` between runs
-5. Handle bad input gracefully (no panics on invalid numbers)
-
-### Starter files
-- `src/main.rs` — entry point with a REPL loop and command parsing stubs
-- `src/expense.rs` — the `Expense` struct and file I/O stubs
-- `Cargo.toml` — project config with serde dependencies
-
-### Your task
-1. Implement `Expense::new()` and the `Display` trait for `Expense`
-2. Implement `save_expenses()` and `load_expenses()` using serde_json
-3. Implement `parse_command()` to turn user input into a `Command` enum
-4. Wire up the REPL: match each command and execute the right action
-5. Implement `total_by_category()` using iterators
-6. Add error handling — replace `.unwrap()` calls with proper `Result` handling
-
-### Hints
-
-<details>
-<summary>Hint for step 1</summary>
-Implement `std::fmt::Display` for `Expense` so you can use it in `println!("{expense}")`. Format it like: `Coffee — $4.50 [food]`
-</details>
-
-<details>
-<summary>Hint for step 3</summary>
-Split the input line by whitespace. The first word is the command name. For `add`, the format is: `add <amount> <category> <description...>`. Use `.splitn(4, ' ')` to limit splits.
-</details>
-
-<details>
-<summary>Hint for step 5</summary>
-Use `.iter().filter().map().sum()` chain. Filter by category, map to amount, then sum.
-</details>
-
-<details>
-<summary>Hint for step 6</summary>
-Create a custom error type or use `Box<dyn std::error::Error>` as your error type. Change `main()` to return `Result<(), Box<dyn std::error::Error>>`.
-</details>
-
-## Stretch goals
-- Add a `delete <index>` command
-- Add date tracking with `chrono` crate and a `summary` command that groups by month
-- Export to CSV
-
-## Key questions
-- Why does Rust distinguish between `String` and `&str`? When would you use each?
-- What happens if you try to use a variable after it's been moved?
-- How does `?` differ from `.unwrap()`?
-- Why can't you have `&T` and `&mut T` at the same time?
-- What's the advantage of `match` being exhaustive?
+---
 
 ## Resources
-- [The Rust Book](https://doc.rust-lang.org/book/) — the official guide, excellent
-- [Rust by Example](https://doc.rust-lang.org/rust-by-example/) — learn by reading small programs
-- [std library docs](https://doc.rust-lang.org/std/) — searchable standard library reference
+
+- [The Rust Book](https://doc.rust-lang.org/book/)
+- [Rust by Example](https://doc.rust-lang.org/rust-by-example/)
+- [The Rustonomicon](https://doc.rust-lang.org/nomicon/) — for unsafe and FFI
+- [Tokio Tutorial](https://tokio.rs/tokio/tutorial)
+- [Jon Gjengset's videos](https://www.youtube.com/@jonhoo) — deep, advanced Rust
+- [Designing Data-Intensive Applications](https://dataintensive.net/) — required reading for Modules 10–11
