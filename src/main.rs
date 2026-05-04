@@ -1,6 +1,6 @@
 mod expense;
 
-use expense::{Expense, load_expenses, save_expenses, total_by_category};
+use expense::{Expense, load_expenses, save_expenses, total_by_category, summary_by_month, export_csv};
 use std::io::{self, Write};
 
 /// Commands the user can type in the REPL.
@@ -16,6 +16,10 @@ enum Command {
     },
     Delete {
         index: usize,
+    },
+    Summary,
+    Export {
+        path: String,
     },
     Help,
     Quit,
@@ -36,15 +40,13 @@ fn parse_command(input: &str) -> Option<Command> {
         "quit" | "q" => Some(Command::Quit),
         "help" | "h" => Some(Command::Help),
         "list" | "ls" => Some(Command::List),
+        "summary" => Some(Command::Summary),
         "delete" | "del" | "rm" => {
             // .parse::<usize>() returns Result; .ok() → Option, ? bails in None
             let index = rest.parse::<usize>().ok()?;
-            Some(Command::Delete { index })
+        Some(Command::Delete { index })
         }
-        // TODO: Implement "add" parsing.
-        //   1. Split `rest` into at most 3 parts: amount, category, description
-        //   2. Parse amount as f64
-        //   3. Return None if parsing fails
+
         "add" => {
             // splitn(3) → at most 3 chunks; the 3rd keeps any remaining spaces
             let mut parts = rest.splitn(3, ' ');
@@ -69,6 +71,12 @@ fn parse_command(input: &str) -> Option<Command> {
             };
             Some(Command::Total { category })
         }
+        "export" => {
+            if rest.is_empty() {
+                return None;
+            }
+            Some(Command::Export { path: rest.to_string() })
+        }
         _ => None,
     }
 }
@@ -79,6 +87,9 @@ fn print_help() {
     println!("  add <amount> <category> <description>  — Add an expense");
     println!("  list                                    — List all expenses");
     println!("  total [category]                        — Show total (optionally by category)");
+    println!("  delete <index>                          — Delete an expense by index");
+    println!("  summary                                 — Show totals grouped by month");
+    println!("  export <path>                           — Export all expenses to CSV");
     println!("  help                                    — Show this message");
     println!("  quit                                    — Exit");
 }
@@ -150,6 +161,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match category {
                     Some(cat) => println!("Total for [{cat}]: ${total:.2}"),
                     None => println!("Total: ${total:.2}"),
+                }
+            }
+            Command::Summary => {
+                let totals = summary_by_month(&expenses);
+                if totals.is_empty() {
+                    println!("No expenses yet.");
+                } else {
+                    for (month, total) in &totals {
+                        println!("{month}: ${total:.2}");
+                    }
+                }
+            }
+            Command::Export { path } => {
+                match export_csv(&expenses, &path) {
+                    Ok(()) => println!("Exported {} expenses to {path}", expenses.len()),
+                    Err(e) => eprintln!("Failed to export: {e}"),
                 }
             }
             Command::Delete { index } => {
