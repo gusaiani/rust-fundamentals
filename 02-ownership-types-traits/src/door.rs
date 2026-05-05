@@ -47,10 +47,6 @@ impl Door<Unlocked> {
     }
 }
 
-// TODO: `impl Door<Unlocked>` block. Provide:
-//   - `pub fn open(&self)` — print "creak..." or similar; takes `&self`, not `self`.
-//   - `pub fn lock(self) -> Door<Locked>` — consumes self, returns a locked door.
-
 // Suppress dead-code warnings until you wire up the real fields above.
 #[allow(dead_code)]
 fn _phantom_example() {
