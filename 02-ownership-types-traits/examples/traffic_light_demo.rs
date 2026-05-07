@@ -1,22 +1,31 @@
-// Drive the runtime traffic light with a logging observer.
-//
 // Run with: `cargo run --example traffic_light_demo`
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// TODO: import what you need from the `fsm` crate.
-// use fsm::{LogObserver, TrafficLight};
+use fsm::{LogObserver, Observer, TrafficLight};
 
 fn main() {
-    // TODO:
-    //   1. Build a `TrafficLight`.
-    //   2. Wrap a `LogObserver` in `Rc::new(RefCell::new(...))`. Keep one
-    //      handle for yourself before subscribing — `Rc::clone` it so both
-    //      the FSM and `main` own a copy.
-    //   3. Subscribe the observer.
-    //   4. Tick the light a handful of times.
-    //   5. Borrow the observer and print every entry from its log.
-    let _ = (Rc::new(RefCell::new(0u8)),); // keep imports alive until you wire it up
-    todo!()
+    let mut light = TrafficLight::new();
+    println!("starting at: {}", light.current());
+
+    // keep the concrete type on the original handle so we can call .log() later
+    let observer: Rc<RefCell<LogObserver>> = Rc::new(RefCell::new(LogObserver::new()));
+
+    // explicit target type → coercion site → Rc<RefCell<LogObserver>> becomes
+    // Rc<RefCell<dyn Observer>>. Refcount bump only; no deep clone.
+    let subscriber: Rc<RefCell<dyn Observer>> = observer.clone();
+    light.subscribe(subscriber);
+
+    // Drive the light through a full cycle.
+    for _ in 0..3 {
+        light.tick();
+    }
+
+    // `borrow()` gives a runtime-checked shared borrow of the inner LogObserver.
+    // It panics only if a `borrow_mut()` is currently outstanding — none is here.
+    let log = observer.borrow();
+    for entry in log.log() {
+        println!("{entry}");
+    }
 }

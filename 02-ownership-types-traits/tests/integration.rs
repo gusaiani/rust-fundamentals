@@ -1,34 +1,57 @@
-// Integration tests for the `fsm` crate.
-//
-// Run with: `cargo test`
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
-// TODO: import the public API you need.
-// use fsm::{Door, LogObserver, TrafficLight};
+use fsm::{Door, Locked, LogObserver, Observer, TrafficLight};
 
 #[test]
 fn door_locks_and_unlocks() {
-    // TODO:
-    //   - `Door::new()` starts locked.
-    //   - Wrong key on `unlock` returns Err with the locked door.
-    //   - Right key on `unlock` returns Ok with an unlocked door.
-    //   - `lock()` on the unlocked door returns a locked door again.
-    //
-    // (The compile-time guarantee — that `.open()` doesn't exist on a locked
-    // door — is checked simply by this file compiling.)
-    todo!()
+    let door = Door::new();
+
+    let result = door.unlock("definitely-not-the-key");
+    assert!(result.is_err(), "wrong key should not unlock");
+
+    // Recover the locked door from the Err arm — `unlock` consumed it
+    let door = match result {
+        Err(locked) => locked,
+        Ok(_) => unreachable!(), // we just asserted is_err()
+    };
+
+    // Right key — should give us a Door<Unlocked>.
+    let unlocked = match door.unlock("skeleton") {
+        Ok(d) => d,
+        Err(_) => panic!("right key should unlock"),
+    };
+
+    // lock() consumes the unlocked door and returns Door<Locked>.
+    // We're not asserting anything about it — the test passes if this
+    // compiles and runs. The TYPE (Door<Locked>) is the assertion;
+    // the binding makes that explicit.
+    let _relocked: Door<Locked> = unlocked.lock();
 }
 
 #[test]
 fn traffic_light_cycles_and_notifies() {
-    // TODO:
-    //   - Build a TrafficLight (starts on Red).
-    //   - Wrap a LogObserver in Rc<RefCell<...>>, keep a clone, subscribe.
-    //   - Tick three times.
-    //   - Assert the observer recorded:
-    //       ["Red->Green", "Green->Yellow", "Yellow->Red"]
-    let _ = Rc::new(RefCell::new(0u8));
-    todo!()
+    let mut light = TrafficLight::new();
+    assert_eq!(light.current(), "Red", "should start at Red");
+
+    // Concrete-typed handle so we can call `.log()` later.
+    let observer: Rc<RefCell<LogObserver>> = Rc::new(RefCell::new(LogObserver::new()));
+
+    // Coerce to the trait-object handle the FSM expects.
+    let subscriber: Rc<RefCell<dyn Observer>> = observer.clone();
+    light.subscribe(subscriber);
+
+    // Drive a full cycle.
+    for _ in 0..3 {
+        light.tick();
+    }
+
+    // Borrow the inner LogObserver shared (read-only). Bind it so the
+    // `Ref` lives long enough for the comparison below.
+    let log = observer.borrow();
+    let expected = ["Red->Green", "Green->Yellow", "Yellow->Red"];
+    assert_eq!(log.log(), expected);
+
+    // The cycle wraps — after three tickes we're back on Red.
+    assert_eq!(light.current(), "Red");
 }

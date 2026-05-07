@@ -10,7 +10,6 @@ pub mod door;
 pub mod observer;
 pub mod traffic_light;
 
-// TODO: re-export the public items from the submodules here.
-// pub use door::{...};
-// pub use observer::{...};
-// pub use traffic_light::{...};
+pub use door::{Door, Locked, Unlocked};
+pub use observer::{LogObserver, Observer};
+pub use traffic_light::{Green, Red, State, TrafficLight, Yellow};
