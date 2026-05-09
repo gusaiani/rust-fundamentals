@@ -1,0 +1,17 @@
+[package]
+name = "envguard"
+version = "0.1.0"
+edition = "2021"
+description = "Typed environment-variable loading with structured errors"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL before `cargo publish`.
+repository = "https://github.com/your-username/envguard"
+keywords = ["env", "config", "12factor", "environment"]
+categories = ["config"]
+readme = "README.md"
+
+[dependencies]
+thiserror = "1"
+
+[dev-dependencies]
+anyhow = "1"
