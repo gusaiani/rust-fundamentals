@@ -23,60 +23,153 @@ use crate::var_name::VarName;
 /// shared across threads.
 type ValueBag = HashMap<String, Box<dyn Any + Send + Sync>>;
 
-// Step 1: declare the builder.
-//
-//   pub struct Loader {
-//       values: ValueBag,
-//       errors: Vec<Error>,
-//   }
-//
-// Both fields private. `errors` accumulates instead of short-circuiting so
-// the user gets every problem in one shot.
-
-/// Stub. Replace with the real `Loader`.
+/// Builder that describes the env-var schema and accumulates parse problems.
+///
+/// Call `.require`/`.optional`/`.optional_or` to declare vars, then `.load()`
+/// to finalize. All errors are collected — you get one `Vec<Error>` with every
+/// missing or malformed var, not just the first.
 pub struct Loader {
-    /// TODO
-    _placeholder: (),
+    values: ValueBag,   // successfully parsed values, keyed by var name
+    errors: Vec<Error>, // every problem seen so far; non-empty => .load() fails
 }
 
 impl Loader {
-    // Step 2: `pub fn new() -> Self` — empty bag, empty error list.
+    pub fn new() -> Self {
+        Self {
+            values: HashMap::new(),
+            errors: Vec::new(),
+        }
+    }
 
-    // Step 3: `.require::<T>(name)`
-    //
-    //   pub fn require<T: FromEnv + Send + Sync + 'static>(self, name: &str) -> Self
-    //
-    // - Validate the name with `VarName::parse`. On failure, push `Error::InvalidName`
-    //   into `self.errors` and return.
-    // - Read the env: `std::env::var(name)`.
-    //   - On `Err(_)`, push `Error::Missing { var: name.into() }`.
-    //   - On `Ok(raw)`, parse with `T::from_env_str`. On parse error,
-    //     push `Error::Parse { var, source }`. On success, insert the boxed
-    //     value into `self.values` keyed by the var's name.
+    /// Declare a required env var of type `T`.
+    ///
+    /// Failures (invalid name, missing var, parse failure) are *recorded*, not
+    /// returned — call `.load()` to surface them all at once.
+    pub fn require<T>(mut self, name: &str) -> Self 
+    where
+        T: FromEnv + Send + Sync + 'static,
+    {
+        // 1. Validate the name. Invalid names are a hard error: we can't even
+        //    look up the value, so just record and return
+        let var_name = match VarName::parse(name) {
+            Ok(v) => v,
+            Err(e) => {
+                self.errors.push(e);
+                return self;
+            }
+        };
 
-    // Step 4: `.optional::<T>(name)`
-    //
-    // Same as `require`, but a missing var is *not* an error — just skip it.
+        // 2. Read the raw env value. Missing it is its own error variant
+        //    so callers can distinguish "not set" from "set but garbage".
+        let raw = match std::env::var(name) {
+            Ok(s) => s,
+            Err(_) => {
+                self.errors.push(Error::Missing { var: name.to_owned() });
+                return self;
+            }
+        };
 
-    // Step 5: `.optional_or::<T>(name, default)`
-    //
-    //   pub fn optional_or<T: FromEnv + Send + Sync + 'static>(
-    //       self, name: &str, default: T,
-    //   ) -> Self
-    //
-    // Same as `optional`, but if the var is missing, insert the default.
-    // (A *parse* failure is still an error — don't fall back to the default
-    // when the user clearly tried to set the var but typed it wrong.)
+        // 3. Parse via the FromEnv impl chosen at the call site (the turbofish
+        //    on `.require::<T>(...)` decides with impl)
+        let parsed: T = match T::from_env_str(&raw) {
+            Ok(v) => v,
+            Err(source) => {
+                self.errors.push(Error::Parse {
+                    var: name.to_owned(),
+                    source,  // already a Box<dyn Error + Send + Sync>, matches the field type
+                });
+                return self;
+            }
+        };
+
+        // 4. Type-erase and stash. The cast `as Box<dyn Any + ...>` is the 
+        //    type-erasure step; `Env::get` will downcast back to T later.
+        let boxed: Box<dyn Any + Send + Sync> = Box::new(parsed);
+        self.values.insert(var_name.as_str().to_owned(), boxed);
+
+        self
+    }
+
+    pub fn optional<T>(mut self, name: &str) -> Self
+    where
+        T: FromEnv + Send + Sync + 'static,
+    {
+        let var_name = match VarName::parse(name) {
+            Ok(v) => v,
+            Err(e) => {
+                self.errors.push(e);
+                return self;
+            }
+        };
+
+        // Difference from `require`: missing is fine, just return without recording.
+        let raw = match std::env::var(name) {
+            Ok(s) => s,
+            Err(_) => return self,
+        };
+
+        let parsed: T = match T::from_env_str(&raw) {
+            Ok(v) => v,
+            Err(source) => {
+                self.errors.push(Error::Parse {
+                    var: name.to_owned(),
+                    source,
+                });
+                return self;
+            }
+        };
+
+        let boxed: Box<dyn Any + Send + Sync> = Box::new(parsed);
+        self.values.insert(var_name.as_str().to_owned(), boxed);
+
+        self
+    }
+
+    /// Declare an optional env var with a fallback default.
+    ///
+    /// - Missing → insert `default`.
+    /// — Present → parse via `T::from_env_str`. Parse failure is recorded as
+    ///   an error (a typo isn't silently replaced by the default).
+    pub fn optional_or<T>(mut self, name: &str, default: T) -> Self
+    where
+        T: FromEnv + Send + Sync + 'static,
+    {
+        let var_name = match VarName::parse(name) {
+            Ok(v) => v,
+            Err(e) => {
+                self.errors.push(e);
+                return self;
+            }
+        };
+
+        // Branch on env presence. Missing → use the default we were given;
+        // present → parse and fall back to recording an error on failure.
+        let value: T = match std::env::var(name) {
+            Err(_) => default,
+            Ok(raw) => match T::from_env_str(&raw) {
+                Ok(v) => v,
+                Err(source) => {
+                    self.errors.push(Error::Parse {
+                        var: name.to_owned(),
+                        source,
+                    });
+                    return self;
+                }
+            },
+        };
+
+        let boxed: Box<dyn Any + Send + Sync> = Box::new(value);
+        self.values.insert(var_name.as_str().to_owned(), boxed);
+
+        self
+    }
+
 
     // Step 6: `.load(self) -> Result<Env, Vec<Error>>`
     //
     // If `self.errors` is empty, return `Ok(Env { values: self.values })`.
     // Otherwise return `Err(self.errors)`.
 
-    /// Stub.
-    pub fn new() -> Self {
-        Self { _placeholder: () }
-    }
 }
 
 // Step 7: declare the reader returned by `Loader::load`.
@@ -107,7 +200,3 @@ impl Env {
         todo!("implement Env::get")
     }
 }
-
-// Suppress unused-import warnings until the real types reference these.
-#[allow(dead_code)]
-fn _imports_used<T: FromEnv>(_: ValueBag, _: VarName, _: T) {}
