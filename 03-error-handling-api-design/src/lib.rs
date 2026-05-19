@@ -3,7 +3,7 @@
 //! Describe the schema fluently, load it once, and get every config problem
 //! in a single `Vec<Error>` rather than dying on the first missing var.
 //!
-//! ```ignore
+//! ```no_run
 //! use envguard::Loader;
 //!
 //! let env = Loader::new()
@@ -27,10 +27,7 @@ pub mod from_env;
 pub mod loader;
 pub mod var_name;
 
-// TODO: re-export the small public surface here so callers can write
-// `use envguard::{Loader, Env, Error, VarName, FromEnv};`.
-//
-// pub use error::Error;
-// pub use from_env::FromEnv;
-// pub use loader::{Env, Loader};
-// pub use var_name::VarName;
+pub use error::Error;
+pub use from_env::{FromEnv, ParseFailure};
+pub use loader::{Env, Loader};
+pub use var_name::VarName;
