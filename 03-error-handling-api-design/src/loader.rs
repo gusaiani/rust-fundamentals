@@ -45,7 +45,7 @@ impl Loader {
     ///
     /// Failures (invalid name, missing var, parse failure) are *recorded*, not
     /// returned — call `.load()` to surface them all at once.
-    pub fn require<T>(mut self, name: &str) -> Self 
+    pub fn require<T>(mut self, name: &str) -> Self
     where
         T: FromEnv + Send + Sync + 'static,
     {
@@ -64,7 +64,9 @@ impl Loader {
         let raw = match std::env::var(name) {
             Ok(s) => s,
             Err(_) => {
-                self.errors.push(Error::Missing { var: name.to_owned() });
+                self.errors.push(Error::Missing {
+                    var: name.to_owned(),
+                });
                 return self;
             }
         };
@@ -76,13 +78,13 @@ impl Loader {
             Err(source) => {
                 self.errors.push(Error::Parse {
                     var: name.to_owned(),
-                    source,  // already a Box<dyn Error + Send + Sync>, matches the field type
+                    source, // already a Box<dyn Error + Send + Sync>, matches the field type
                 });
                 return self;
             }
         };
 
-        // 4. Type-erase and stash. The cast `as Box<dyn Any + ...>` is the 
+        // 4. Type-erase and stash. The cast `as Box<dyn Any + ...>` is the
         //    type-erasure step; `Env::get` will downcast back to T later.
         let boxed: Box<dyn Any + Send + Sync> = Box::new(parsed);
         self.values.insert(var_name.as_str().to_owned(), boxed);
@@ -128,7 +130,7 @@ impl Loader {
     /// Declare an optional env var with a fallback default.
     ///
     /// - Missing → insert `default`.
-    /// — Present → parse via `T::from_env_str`. Parse failure is recorded as
+    /// - Present → parse via `T::from_env_str`. Parse failure is recorded as
     ///   an error (a typo isn't silently replaced by the default).
     pub fn optional_or<T>(mut self, name: &str, default: T) -> Self
     where
@@ -164,39 +166,81 @@ impl Loader {
         self
     }
 
+    /// Finalize the schema. Returns `Ok(Env)` if no problems were recorded,
+    /// otherwise every accumulated error.
+    pub fn load(self) -> Result<Env, Vec<Error>> {
+        if self.errors.is_empty() {
+            Ok(Env {
+                values: self.values,
+            })
+        } else {
+            Err(self.errors)
+        }
+    }
 
     // Step 6: `.load(self) -> Result<Env, Vec<Error>>`
     //
     // If `self.errors` is empty, return `Ok(Env { values: self.values })`.
     // Otherwise return `Err(self.errors)`.
-
 }
 
-// Step 7: declare the reader returned by `Loader::load`.
-//
-//   pub struct Env {
-//       values: ValueBag,
-//   }
-//
-// One method:
-//
-//   pub fn get<T: FromEnv + Clone + Send + Sync + 'static>(&self, name: &str) -> Result<T, Error>
-//
-// - Look up `name` in the map.
-// - If not present: `Err(Error::NotRequested { var: name.into() })`.
-// - If present: `downcast_ref::<T>()` and `.cloned()`. A failed downcast is
-//   also `NotRequested` — the caller asked for a different type than was
-//   loaded, which from the caller's perspective is the same kind of bug.
+impl Default for Loader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-/// Stub. Replace with the real `Env`.
+/// Read-only view over the env vars that were successfully loaded.
 pub struct Env {
-    /// TODO
-    _placeholder: (),
+    values: ValueBag,
 }
 
 impl Env {
-    /// Stub.
-    pub fn get<T>(&self, _name: &str) -> Result<T, Error> {
-        todo!("implement Env::get")
+    /// Look up a loaded var by name, downcast to `T`, and return a clone.
+    ///
+    /// `Error::NotRequested` is returned when the name isn't in the bag —
+    /// either because the schema never declared it, or because an `optional`
+    /// var was absent at load time. A wrong-`T` downcast collapses to the
+    /// same error: from the caller's perspective both mean "I don't have
+    /// what you asked for."
+    pub fn get<T>(&self, name: &str) -> Result<T, Error>
+    where
+        T: FromEnv + Clone + Send + Sync + 'static,
+    {
+        // `get` borrows the boxed Any. None => the schema didn't include this name
+        // (or it was an optional that came back missing — same effect).
+        let any_box = match self.values.get(name) {
+            Some(b) => b,
+            None => {
+                return Err(Error::NotRequested {
+                    var: name.to_owned(),
+                })
+            }
+        };
+
+        // Downcast borrows a &T out of the &dyn Any. None => the stored concrete
+        // type isn't T. From the caller's view this is also "not requested as T".
+        let value_ref: &T = match any_box.downcast_ref::<T>() {
+            Some(v) => v,
+            None => {
+                return Err(Error::NotRequested {
+                    var: name.to_owned(),
+                })
+            }
+        };
+
+        // We only have a borrow, so clone out a fresh T to return by value.
+        Ok(value_ref.clone())
+    }
+}
+
+impl std::fmt::Debug for Env {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Values are type-erased `dyn Any` and can't be formatted, so the
+        // debug view lists which var names were loaded — enough to make a
+        // failing `expect_err` message useful.
+        f.debug_struct("Env")
+            .field("vars", &self.values.keys().collect::<Vec<_>>())
+            .finish()
     }
 }
