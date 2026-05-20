@@ -1,6 +1,6 @@
 [package]
 name = "envtyped"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Typed environment-variable loading with structured errors"
 license = "MIT OR Apache-2.0"
