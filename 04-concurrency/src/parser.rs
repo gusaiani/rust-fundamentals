@@ -31,16 +31,30 @@ pub enum ParseError {
     BadNumber { field: &'static str },
 }
 
-/// Parse a single line into a [`LogEntry`].
-///
-/// TODO (step 1):
-///   1. `split_whitespace().collect::<Vec<_>>()` (path has no spaces, so the
-///      6th field is the whole path).
-///   2. `if parts.len() != 6 { return Err(WrongFieldCount { found }) }`.
-///   3. Parse `status: u16`, `bytes: u64`, `request_time_ms: f32`, mapping
-///      each `.parse()` error to `BadNumber { field: "status" }` etc.
-///   4. `Ok(LogEntry { ip: parts[0].to_owned(), ... })`.
 pub fn parse_line(line: &str) -> Result<LogEntry, ParseError> {
-    let _ = line;
-    todo!("step 1: parse the six fields")
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() != 6 {
+        return Err(ParseError::WrongFieldCount { found: parts.len() });
+    }
+
+    let status: u16 = parts[1]
+        .parse()
+        .map_err(|_| ParseError::BadNumber { field: "status" })?;
+
+    let bytes: u64 = parts[2]
+        .parse()
+        .map_err(|_| ParseError::BadNumber { field: "bytes" })?;
+
+    let request_time_ms: f32 = parts[3].parse().map_err(|_| ParseError::BadNumber {
+        field: "request_time_ms",
+    })?;
+
+    Ok(LogEntry {
+        ip: parts[0].to_owned(),
+        status,
+        bytes,
+        request_time_ms,
+        method: parts[4].to_owned(),
+        path: parts[5].to_owned(),
+    })
 }

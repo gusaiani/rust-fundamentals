@@ -33,14 +33,9 @@ pub struct Stats {
 }
 
 impl Stats {
-    /// Fold one successfully-parsed entry into the running totals.
-    //
-    // TODO (step 2): bump `requests`, add `bytes`, increment the three count
-    // maps (`*self.status_counts.entry(e.status).or_insert(0) += 1`, etc.),
-    // push `request_time_ms`.
     pub fn record(&mut self, entry: &LogEntry) {
-        let _ = entry;
-        todo!("step 2: fold one entry into the aggregate")
+        self.requests += 1;
+        self.total_bytes += entry.bytes;
     }
 
     /// Count a line that failed to parse (don't lose track of bad input).
