@@ -179,7 +179,7 @@ impl private::Sealed for u16 {}
 impl FromEnv for u16 { /* ... */ }
 ```
 
-External crates can't `impl FromEnv for MyType` because they can't `impl private::Sealed for MyType` — `Sealed` isn't accessible to them. Why bother? You control the set of types that satisfy the trait, which means you can add new methods later without it being a breaking change for downstream impls (there *aren't any*).
+External crates can't `impl FromEnv for MyType` because they can't `impl private::Sealed for MyType` — `Sealed` isn't accessible to them. Why bother? You control the set of types that satisfy the trait, which means you can add new methods later without it being a breaking change for downstream impls (there _aren't any_).
 
 ### Pill 11: Re-exports & the Crate Root
 
@@ -200,17 +200,17 @@ Internals stay in modules; the crate root re-exports the small surface. Don't ma
 
 ### Pill 12: Doc Tests
 
-Code blocks in `///` comments are *compiled and run* by `cargo test`:
+Code blocks in `///` comments are _compiled and run_ by `cargo test`:
 
 ````rust
 /// ```
-/// let v = envguard::VarName::parse("PORT").unwrap();
+/// let v = envtyped::VarName::parse("PORT").unwrap();
 /// assert_eq!(v.as_str(), "PORT");
 /// ```
 pub struct VarName(String);
 ````
 
-Two wins: documentation that can't go stale (it'd fail CI), and friction-free examples for users browsing docs.rs. Use `no_run` for examples that need real env or network. Use `compile_fail` to *prove* a misuse doesn't compile (typestate guarantees, sealed traits).
+Two wins: documentation that can't go stale (it'd fail CI), and friction-free examples for users browsing docs.rs. Use `no_run` for examples that need real env or network. Use `compile_fail` to _prove_ a misuse doesn't compile (typestate guarantees, sealed traits).
 
 ### Pill 13: `TryFrom` for Validating Constructors
 
@@ -238,27 +238,27 @@ Habits that separate "a Rust file" from "a publishable crate":
 
 ### Pill 15: Choosing Between the Patterns
 
-| Need                                          | Reach for                       |
-| --------------------------------------------- | ------------------------------- |
-| Cheap typed wrapper around a primitive        | Newtype (Pill 8)                |
-| Restrict who can implement your trait         | Sealed trait (Pill 10)          |
-| Many optional fields, single freeze           | Builder (Pill 9)                |
-| Library error type                            | `thiserror` (Pill 4)            |
-| Application error type                        | `anyhow` (Pill 5)               |
-| Convert a primitive into a richer type        | `TryFrom` (Pill 13)             |
-| Future-proof your public enums                | `#[non_exhaustive]` (Pill 7)    |
-| Document and test in one place                | Doc tests (Pill 12)             |
+| Need                                   | Reach for                    |
+| -------------------------------------- | ---------------------------- |
+| Cheap typed wrapper around a primitive | Newtype (Pill 8)             |
+| Restrict who can implement your trait  | Sealed trait (Pill 10)       |
+| Many optional fields, single freeze    | Builder (Pill 9)             |
+| Library error type                     | `thiserror` (Pill 4)         |
+| Application error type                 | `anyhow` (Pill 5)            |
+| Convert a primitive into a richer type | `TryFrom` (Pill 13)          |
+| Future-proof your public enums         | `#[non_exhaustive]` (Pill 7) |
+| Document and test in one place         | Doc tests (Pill 12)          |
 
-Knowing *which* pattern fits *which* problem is most of the skill. Each pattern is small. The taste comes from picking the right one fast.
+Knowing _which_ pattern fits _which_ problem is most of the skill. Each pattern is small. The taste comes from picking the right one fast.
 
-## Project: `envguard` — typed env-var loading with helpful errors
+## Project: `envtyped` — typed env-var loading with helpful errors
 
 A tiny library that loads typed configuration from environment variables and produces a structured error when anything is missing or malformed. Every Rust service needs this; most reinvent it badly. You're going to build the small, opinionated, publishable version.
 
 Why it's a good vehicle for this module:
 
-- **Errors matter.** Five distinct failure modes (missing, parse failed, bad name, ...). The error type *is* the API.
-- **Builder fits naturally.** Describe the schema fluently, then `.load()` once and get *all* errors at once — a strict improvement on the usual "die on first missing var."
+- **Errors matter.** Five distinct failure modes (missing, parse failed, bad name, ...). The error type _is_ the API.
+- **Builder fits naturally.** Describe the schema fluently, then `.load()` once and get _all_ errors at once — a strict improvement on the usual "die on first missing var."
 - **Sealed trait.** Only specific types are loadable from env (`u16`, `bool`, `String`, etc.) — and you control the list.
 - **Newtype.** `VarName` validates that a name is upper-snake-case, freeing the rest of the codebase from string-checking.
 - **Publishable.** The API is small enough to fit in your head, real enough to be useful.
@@ -266,13 +266,13 @@ Why it's a good vehicle for this module:
 ### Requirements
 
 1. `Loader` builder with `.require::<T>(name)`, `.optional::<T>(name)`, `.optional_or::<T>(name, default)`. Each returns `Self`.
-2. `.load()` returns `Result<Env, Vec<Error>>` — collect *all* config problems, not just the first.
+2. `.load()` returns `Result<Env, Vec<Error>>` — collect _all_ config problems, not just the first.
 3. `Env::get::<T>(name)` returns the typed value, or `Error::NotRequested` if it wasn't in the schema.
 4. `Error` enum using `thiserror`, marked `#[non_exhaustive]`, with `#[source]` chaining for parse failures.
 5. `VarName` newtype with `TryFrom<&str>` — only `[A-Z][A-Z0-9_]*` is accepted.
 6. `FromEnv` is a public trait but **sealed** — outside crates cannot implement it.
 7. At least one doc test in the public API that compiles and runs as part of `cargo test`.
-8. An example binary that uses `envguard` from inside an `anyhow::Result<()>` `main`.
+8. An example binary that uses `envtyped` from inside an `anyhow::Result<()>` `main`.
 
 ### Starter files
 
@@ -282,7 +282,7 @@ Why it's a good vehicle for this module:
 - `src/var_name.rs` — `VarName` newtype + `TryFrom<&str>` validator.
 - `src/from_env.rs` — sealed `FromEnv` trait + impls for the common types.
 - `src/loader.rs` — `Loader` builder and `Env` reader.
-- `examples/load_app_config.rs` — uses `envguard` from an anyhow main.
+- `examples/load_app_config.rs` — uses `envtyped` from an anyhow main.
 - `tests/integration.rs` — drives the public API with temporary env vars.
 
 ### Your task
@@ -293,7 +293,7 @@ Why it's a good vehicle for this module:
 4. **`Loader` builder (`loader.rs`):** accumulates parsed values in a `HashMap<VarName, Box<dyn Any + Send + Sync>>` and errors in a `Vec<Error>`. `.require`, `.optional`, `.optional_or` consume and return `Self`. `.load()` returns `Ok(Env)` if `errors` is empty, else `Err(errors)`.
 5. **`Env::get<T>`:** look up the value by name and downcast to `T`. Return `Error::NotRequested` if the name isn't in the map.
 6. **Re-exports (`lib.rs`):** re-export `Error`, `Loader`, `Env`, `VarName`, `FromEnv` from the crate root.
-7. **Example (`examples/load_app_config.rs`):** define an `AppConfig` struct, build it from env via `envguard`, propagate errors with `anyhow`.
+7. **Example (`examples/load_app_config.rs`):** define an `AppConfig` struct, build it from env via `envtyped`, propagate errors with `anyhow`.
 8. **Tests (`tests/integration.rs`):** at least three tests — happy path, missing-var error, parse-failure error.
 
 ### Hints
@@ -301,14 +301,14 @@ Why it's a good vehicle for this module:
 <details>
 <summary>Hint for step 1 (`#[from]` vs `#[source]`)</summary>
 
-`Parse { var, source }` carries an *additional* field (`var`) alongside the inner cause, so `#[from]` won't help — it only generates `From<InnerErr>` on tuple-shaped variants. Use `#[source]` to mark the cause for the chain, and convert manually inside the loader: `Error::Parse { var: name.into(), source: Box::new(inner) }`.
+`Parse { var, source }` carries an _additional_ field (`var`) alongside the inner cause, so `#[from]` won't help — it only generates `From<InnerErr>` on tuple-shaped variants. Use `#[source]` to mark the cause for the chain, and convert manually inside the loader: `Error::Parse { var: name.into(), source: Box::new(inner) }`.
 
 </details>
 
 <details>
 <summary>Hint for step 3 (sealed via private supertrait)</summary>
 
-Put `pub trait Sealed {}` inside a `mod private { ... }`. `Sealed` is `pub` *within the crate* but the module isn't `pub`, so external crates can see neither the trait nor the module path. Then `pub trait FromEnv: private::Sealed { ... }`. Inside your crate, `impl private::Sealed for u16 {}` works fine. From outside, it doesn't.
+Put `pub trait Sealed {}` inside a `mod private { ... }`. `Sealed` is `pub` _within the crate_ but the module isn't `pub`, so external crates can see neither the trait nor the module path. Then `pub trait FromEnv: private::Sealed { ... }`. Inside your crate, `impl private::Sealed for u16 {}` works fine. From outside, it doesn't.
 
 </details>
 
@@ -345,7 +345,7 @@ Tests run in parallel and share process env. Set var names with a per-test prefi
 - Why do libraries prefer `thiserror` over `anyhow`? What does each give up?
 - What problem does `#[non_exhaustive]` solve, and what's the cost to callers?
 - When would you choose `From` (`?`-friendly) over `TryFrom`? When the reverse?
-- Why does the sealed-trait pattern require a *private* supertrait, not a regular one?
+- Why does the sealed-trait pattern require a _private_ supertrait, not a regular one?
 - The builder consumes `self` and returns `Self`. What ergonomic benefit does that give versus `&mut self`? What does it cost?
 
 ## Resources
@@ -353,6 +353,6 @@ Tests run in parallel and share process env. Set var names with a per-test prefi
 - [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) — the official checklist for a publishable crate
 - [`thiserror` docs](https://docs.rs/thiserror)
 - [`anyhow` docs](https://docs.rs/anyhow)
-- [BurntSushi — *Error Handling in Rust*](https://blog.burntsushi.net/rust-error-handling/) — long, opinionated, worth it
+- [BurntSushi — _Error Handling in Rust_](https://blog.burntsushi.net/rust-error-handling/) — long, opinionated, worth it
 - [The Rustonomicon — Sealed Traits](https://rust-lang.github.io/api-guidelines/future-proofing.html#sealed-traits-protect-against-downstream-implementations-c-sealed)
 - [Cargo Book — publishing](https://doc.rust-lang.org/cargo/reference/publishing.html)

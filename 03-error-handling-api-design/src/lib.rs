@@ -1,10 +1,10 @@
-//! `envguard` — typed environment-variable loading with structured errors.
+//! `envtyped` — typed environment-variable loading with structured errors.
 //!
 //! Describe the schema fluently, load it once, and get every config problem
 //! in a single `Vec<Error>` rather than dying on the first missing var.
 //!
 //! ```no_run
-//! use envguard::Loader;
+//! use envtyped::Loader;
 //!
 //! let env = Loader::new()
 //!     .require::<u16>("PORT")

@@ -16,7 +16,7 @@ impl VarName {
     ///
     /// ```
     ///
-    /// use envguard::var_name::VarName;
+    /// use envtyped::var_name::VarName;
     ///
     /// let ok = VarName::parse("PORT").unwrap();
     /// assert_eq!(ok.as_str(), "PORT");
@@ -31,7 +31,7 @@ impl VarName {
             });
         }
 
-        let first = s.chars().next().unwrap(); 
+        let first = s.chars().next().unwrap();
         if !first.is_ascii_uppercase() {
             return Err(Error::InvalidName {
                 name: s.to_owned(),

@@ -1,4 +1,4 @@
-use envguard::{Error, Loader};
+use envtyped::{Error, Loader};
 
 #[test]
 fn happy_path_loads_typed_values() {

@@ -1,4 +1,4 @@
-// Demonstrates `envguard` from inside an `anyhow::Result<()>` main.
+// Demonstrates `envtyped` from inside an `anyhow::Result<()>` main.
 //
 // Run with the schema satisfied:
 //
@@ -11,7 +11,7 @@
 //   WORKERS=not-a-number cargo run --example load_app_config
 
 use anyhow::{Context, Result};
-use envguard::Loader;
+use envtyped::Loader;
 
 #[derive(Debug)]
 #[allow(dead_code)]
