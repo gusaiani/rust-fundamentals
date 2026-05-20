@@ -1,0 +1,10 @@
+10.0.0.5 200 1432 12.4 GET /api/users
+192.168.1.9 404 512 3.1 GET /favicon.ico
+10.0.0.5 500 0 88.7 POST /api/checkout
+172.16.0.2 200 9001 5.0 GET /
+10.0.0.5 200 1432 21.9 GET /api/users
+this line is intentionally malformed
+192.168.1.9 301 256 1.2 GET /login
+10.0.0.6 503 0 250.5 POST /api/checkout
+172.16.0.2 200 4096 7.7 GET /health
+10.0.0.5 200 1432 9.3 GET /api/users

@@ -1,0 +1,26 @@
+[package]
+name = "logcrunch"
+version = "0.1.0"
+edition = "2021"
+description = "A parallel server-log analyzer: map-reduce, channels, and rayon, benchmarked"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/logcrunch"
+keywords = ["logs", "parallel", "concurrency", "rayon", "analytics"]
+categories = ["command-line-utilities", "concurrency"]
+readme = "README.md"
+
+[[bin]]
+name = "logcrunch"
+path = "src/bin/logcrunch.rs"
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[dependencies]
+crossbeam-channel = "0.5"
+rayon = "1"
+
+[dev-dependencies]
+criterion = "0.5"
