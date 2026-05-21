@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use crate::parser::LogEntry;
+use crate::{parser::LogEntry, stats};
 
 /// Combine `other` into `self`. Must be associative and commutative.
 pub trait Merge {
@@ -36,45 +36,94 @@ impl Stats {
     pub fn record(&mut self, entry: &LogEntry) {
         self.requests += 1;
         self.total_bytes += entry.bytes;
+
+        *self.status_counts.entry(entry.status).or_insert(0) += 1;
+        *self.path_counts.entry(entry.path.clone()).or_insert(0) += 1;
+        *self.ip_counts.entry(entry.ip.clone()).or_insert(0) += 1;
+
+        self.request_times.push(entry.request_time_ms);
     }
 
-    /// Count a line that failed to parse (don't lose track of bad input).
-    //
-    // TODO (step 2): `self.malformed += 1`.
     pub fn record_malformed(&mut self) {
-        todo!("step 2: count a skipped malformed line")
+        self.malformed += 1;
     }
 
-    /// `p` is a percentile in `0.0..=100.0`. Returns `None` if no samples.
-    //
-    // TODO (step 2): clone the samples, `sort_unstable_by(|a,b|
-    // a.partial_cmp(b).unwrap())` (f32 has no total Ord), index at
-    // `((p/100.0) * (len-1)).round() as usize`.
     pub fn percentile(&self, p: f32) -> Option<f32> {
-        let _ = p;
-        todo!("step 2: exact percentile from the sample vec")
+        if self.request_times.is_empty() {
+            return None;
+        }
+
+        let mut sorted = self.request_times.clone();
+        sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+        let len = sorted.len();
+        let rank = (p / 100.0) * (len - 1) as f32;
+        let index = rank.round() as usize;
+        Some(sorted[index])
     }
 
     /// Freeze the aggregate into a printable report. `top_k` caps the
     /// path/IP leaderboards.
-    //
-    // TODO (step 2): turn each count map into a Vec, sort by count desc,
-    // truncate to top_k; error_rate = (sum of 5xx) / requests; pull
-    // p50/p95/p99 from `percentile`.
     pub fn into_report(self, top_k: usize) -> Report {
-        let _ = top_k;
-        todo!("step 2: build the Report")
+        let p50 = self.percentile(50.0);
+        let p95 = self.percentile(95.0);
+        let p99 = self.percentile(99.0);
+
+        let mut status_counts: Vec<(u16, u64)> = self.status_counts.into_iter().collect();
+        status_counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let mut top_paths: Vec<(String, u64)> = self.path_counts.into_iter().collect();
+        top_paths.sort_by(|a, b| b.1.cmp(&a.1));
+        top_paths.truncate(top_k);
+
+        let mut top_ips: Vec<(String, u64)> = self.ip_counts.into_iter().collect();
+        top_ips.sort_by(|a, b| b.1.cmp(&a.1));
+        top_ips.truncate(top_k);
+
+        let server_errors: u64 = status_counts
+            .iter()
+            .filter(|(code, _)| (500..=599).contains(code))
+            .map(|(_, count)| count)
+            .sum();
+
+        let error_rate = if self.requests == 0 {
+            0.0
+        } else {
+            server_errors as f32 / self.requests as f32
+        };
+
+        Report {
+            requests: self.requests,
+            malformed: self.malformed,
+            total_bytes: self.total_bytes,
+            status_counts,
+            top_paths,
+            top_ips,
+            error_rate,
+            p50,
+            p95,
+            p99,
+        }
     }
 }
 
 impl Merge for Stats {
-    // TODO (step 2): add the scalars; for each map fold `other`'s entries in
-    // (`*self.m.entry(k).or_insert(0) += v`); `self.request_times.extend(
-    // other.request_times)`. This is the one provably-correct combine reused
-    // by every parallel implementation — get it right once.
     fn merge(&mut self, other: Self) {
-        let _ = other;
-        todo!("step 2: associative + commutative merge")
+        self.requests += other.requests;
+        self.malformed += other.malformed;
+        self.total_bytes += other.total_bytes;
+
+        for (status, count) in other.status_counts {
+            *self.status_counts.entry(status).or_insert(0) += count;
+        }
+        for (path, count) in other.path_counts {
+            *self.path_counts.entry(path).or_insert(0) += count;
+        }
+        for (ip, count) in other.ip_counts {
+            *self.ip_counts.entry(ip).or_insert(0) += count;
+        }
+
+        self.request_times.extend(other.request_times);
     }
 }
 
