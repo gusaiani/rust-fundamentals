@@ -6,12 +6,9 @@
 //! threading, splitting, and load balancing. Compare its benchmark number
 //! to your hand-rolled version — sometimes you win, usually it's close.
 
-#[allow(unused_imports)]
 use rayon::prelude::*;
 
-#[allow(unused_imports)]
 use crate::parser::parse_line;
-#[allow(unused_imports)]
 use crate::stats::{Merge, Stats};
 
 /// Analyze with a rayon parallel iterator.
@@ -27,6 +24,19 @@ use crate::stats::{Merge, Stats};
 // `ThreadPoolBuilder`); this signature ignores `n_threads` on purpose — the
 // benchmark sets the pool size around the call.
 pub fn analyze_rayon(data: &[u8]) -> Stats {
-    let _ = data;
-    todo!("step 8: par_iter().fold().reduce()")
+    let text = String::from_utf8_lossy(data);
+    let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
+
+    let partials = lines.par_iter().fold(Stats::default, |mut acc, line| {
+        match parse_line(line) {
+            Ok(entry) => acc.record(&entry),
+            Err(_) => acc.record_malformed(),
+        }
+        acc
+    });
+
+    partials.reduce(Stats::default, |mut a, b| {
+        a.merge(b);
+        a
+    })
 }

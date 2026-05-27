@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use crate::{parser::LogEntry, stats};
+use crate::parser::LogEntry;
 
 /// Combine `other` into `self`. Must be associative and commutative.
 pub trait Merge {
@@ -70,14 +70,14 @@ impl Stats {
         let p99 = self.percentile(99.0);
 
         let mut status_counts: Vec<(u16, u64)> = self.status_counts.into_iter().collect();
-        status_counts.sort_by(|a, b| b.1.cmp(&a.1));
+        status_counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
         let mut top_paths: Vec<(String, u64)> = self.path_counts.into_iter().collect();
-        top_paths.sort_by(|a, b| b.1.cmp(&a.1));
+        top_paths.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         top_paths.truncate(top_k);
 
         let mut top_ips: Vec<(String, u64)> = self.ip_counts.into_iter().collect();
-        top_ips.sort_by(|a, b| b.1.cmp(&a.1));
+        top_ips.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         top_ips.truncate(top_k);
 
         let server_errors: u64 = status_counts
