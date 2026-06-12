@@ -147,6 +147,34 @@ impl std::fmt::Display for Report {
     // TODO (step 2, optional polish): pretty-print. `{:#?}` is fine to start;
     // make it readable once the numbers are correct.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:#?}")
+        writeln!(f, "=== logcrunch report ===")?;
+        writeln!(f, "requests:   {}", self.requests)?;
+        writeln!(f, "malformed:  {}", self.malformed)?;
+        writeln!(f, "bytes:      {}", self.total_bytes)?;
+        writeln!(f, "error rate: {:.2}%", self.error_rate * 100.0)?;
+        writeln!(f, "\nstatus codes:")?;
+        for (code, count) in &self.status_counts {
+            writeln!(f, "  {code}  {count}")?;
+        }
+        writeln!(f, "\ntop paths:")?;
+        for (path, count) in &self.top_paths {
+            writeln!(f, "  {count:>8}  {path}")?;
+        }
+        writeln!(f, "\ntop IPs:")?;
+        for (ip, count) in &self.top_ips {
+            writeln!(f, "  {count:>8}  {ip}")?;
+        }
+
+        let fmt_ms = |p: Option<f32>| {
+            p.map(|v| format!("{v:.1}ms"))
+                .unwrap_or_else(|| "n/a".to_string())
+        };
+
+        writeln!(f, "\nrequest time:")?;
+        writeln!(f, "  p50  {}", fmt_ms(self.p50))?;
+        writeln!(f, "  p95  {}", fmt_ms(self.p95))?;
+        writeln!(f, "  p99  {}", fmt_ms(self.p99))?;
+
+        Ok(())
     }
 }

@@ -10,16 +10,11 @@
 
 use std::process::ExitCode;
 
-#[allow(unused_imports)]
 use logcrunch::parallel::analyze_parallel;
-#[allow(unused_imports)]
 use logcrunch::pipeline::analyze_pipeline;
-#[allow(unused_imports)]
 use logcrunch::rayon_impl::analyze_rayon;
-#[allow(unused_imports)]
 use logcrunch::sequential::analyze_sequential;
 
-#[allow(dead_code)]
 fn default_threads() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -27,19 +22,72 @@ fn default_threads() -> usize {
 }
 
 fn main() -> ExitCode {
-    // TODO (step 9):
-    //   1. Collect `std::env::args()`. First positional = path (required;
-    //      print usage + return `ExitCode::FAILURE` if missing).
-    //   2. Parse flags: `--threads N`, `--top K`, `--mode <s>`. Unknown flag
-    //      or bad value → usage error.
-    //   3. `std::fs::read(path)` into a `Vec<u8>` (read once, here — the
-    //      analyze fns take `&[u8]` so I/O stays out of measured work).
-    //   4. Dispatch on mode:
-    //        seq      => analyze_sequential(&data)
-    //        par      => analyze_parallel(&data, threads)
-    //        pipeline => analyze_pipeline(&data, threads)
-    //        rayon    => analyze_rayon(&data)
-    //   5. `let report = stats.into_report(top_k); println!("{report}");`
-    //   6. Return `ExitCode::SUCCESS`.
-    todo!("step 9: parse args, dispatch on --mode, print the report")
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    let path = match args.iter().find(|a| !a.starts_with('-')) {
+        Some(p) => p.clone(),
+        None => {
+            eprintln!(
+                "usage: logcrunch <FILE> [--threads N] [--top K] [--mode seq|par|pipeline|rayon]"
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut threads = default_threads();
+
+    if let Some(i) = args.iter().position(|a| a == "--threads") {
+        match args.get(i + 1).and_then(|v| v.parse::<usize>().ok()) {
+            Some(n) if n > 0 => threads = n,
+            _ => {
+                eprintln!("--threads needs a positive integer");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let mut top_k = 10;
+
+    if let Some(i) = args.iter().position(|a| a == "--top") {
+        match args.get(i + 1).and_then(|v| v.parse::<usize>().ok()) {
+            Some(n) if n > 0 => top_k = n,
+            _ => {
+                eprintln!("--top needs a positive integer");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let mut mode = "par".to_string();
+
+    if let Some(i) = args.iter().position(|a| a == "--mode") {
+        match args.get(i + 1).map(|v| v.as_str()) {
+            Some(m @ ("seq" | "par" | "pipeline" | "rayon")) => mode = m.to_string(),
+            _ => {
+                eprintln!("--mode must be one of: seq, par, pipeline, rayon");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    let data = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("cannot read {path}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let stats = match mode.as_str() {
+        "seq" => analyze_sequential(&data),
+        "par" => analyze_parallel(&data, threads),
+        "pipeline" => analyze_pipeline(&data, threads),
+        "rayon" => analyze_rayon(&data),
+        _ => unreachable!("mode validated during arg parsing"),
+    };
+
+    let report = stats.into_report(top_k);
+    print!("{report}");
+
+    ExitCode::SUCCESS
 }

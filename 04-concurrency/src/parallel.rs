@@ -13,16 +13,6 @@ use crate::stats::{Merge, Stats};
 ///
 /// This is the classic parallel-file bug if you get it wrong: a raw byte
 /// split lands mid-line and that line is double-counted or dropped *silently*.
-//
-// TODO (step 5):
-//   - raw split for chunk i ≈ i * data.len() / n
-//   - from each raw offset, advance while data[end] != b'\n' (and end <
-//     data.len()), then step past the '\n' — that index is this chunk's end
-//     and the next chunk's start
-//   - chunk 0 starts at 0; the final chunk ends at data.len()
-//   - return Vec<&[u8]> sub-slices (zero-copy)
-// Unit-test this BEFORE writing analyze_parallel. Edge cases: no trailing
-// newline, split landing exactly on '\n', n > line count, empty input.
 pub fn split_into_chunks(data: &[u8], n: usize) -> Vec<&[u8]> {
     let n = n.max(1); // n == 0 would divide by zero below; treat it as "1 chunk"
     if data.is_empty() {
