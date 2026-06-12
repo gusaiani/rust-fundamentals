@@ -1,0 +1,43 @@
+[package]
+name = "aprobe"
+version = "0.1.0"
+edition = "2021"
+description = "An async network probe: a concurrent TCP port scanner and a graceful TCP proxy, built on tokio"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/aprobe"
+keywords = ["tokio", "async", "network", "port-scanner", "proxy"]
+categories = ["command-line-utilities", "network-programming", "asynchronous"]
+readme = "README.md"
+
+[[bin]]
+name = "aprobe"
+path = "src/bin/aprobe.rs"
+
+[[bench]]
+name = "scan"
+harness = false
+
+[dependencies]
+# Only the runtime features we actually use — keep the surface honest.
+#   rt-multi-thread: the work-stealing scheduler + #[tokio::main]
+#   macros:          #[tokio::main], #[tokio::test], select!
+#   net:             TcpStream / TcpListener / lookup_host
+#   io-util:         AsyncReadExt / AsyncWriteExt / copy_bidirectional
+#   time:            timeout / sleep
+#   sync:            Semaphore / mpsc / watch
+#   signal:          ctrl_c() for graceful-shutdown wiring in the CLI
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "io-util",
+    "time",
+    "sync",
+    "signal",
+] }
+
+[dev-dependencies]
+# async_tokio lets criterion drive futures on a tokio runtime (b.to_async).
+criterion = { version = "0.5", features = ["async_tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
