@@ -14,10 +14,11 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
-use tokio::sync::Semaphore;
+use tokio::{net::TcpStream, sync::Semaphore, task::JoinSet};
 
-use crate::target::{ScanOutcome, Target};
+use crate::target::{PortState, ScanOutcome, Target};
 
 /// Tunables for a scan.
 #[derive(Debug, Clone)]
@@ -55,9 +56,22 @@ impl Default for ScanConfig {
 /// Note `host` is `&str`: tokio's `connect` resolves it (DNS) for you. For a
 /// big scan you'd resolve once up front — see the stretch goals.
 pub async fn probe_port(host: &str, port: u16, cfg: &ScanConfig) -> ScanOutcome {
-    // TODO (step 5): implement the timeout-wrapped connect described above.
-    let _ = (host, port, cfg);
-    todo!("probe one port with a timeout; classify Open/Closed/Filtered")
+    let start = Instant::now();
+
+    let connect = TcpStream::connect((host, port));
+    let result = tokio::time::timeout(cfg.timeout, connect).await;
+
+    let state = match result {
+        Ok(Ok(_stream)) => PortState::Open,
+        Ok(Err(_)) => PortState::Closed,
+        Err(_elapsed) => PortState::Filtered,
+    };
+
+    ScanOutcome {
+        port,
+        state,
+        rtt: start.elapsed(),
+    }
 }
 
 /// Scan every port in `target`, at most `cfg.concurrency` at a time.
@@ -78,10 +92,33 @@ pub async fn probe_port(host: &str, port: u16, cfg: &ScanConfig) -> ScanOutcome 
 /// Everything `spawn`ed must be `Send + 'static` — that's why `host`/`cfg`
 /// are cloned into each task and the `Arc<Semaphore>` is shared by clone.
 pub async fn scan(target: &Target, cfg: &ScanConfig) -> Vec<ScanOutcome> {
-    let _sem = Arc::new(Semaphore::new(cfg.concurrency.max(1)));
-    // TODO (step 6): spawn-with-permit per port into a JoinSet, drain, sort.
-    let _ = target;
-    todo!("orchestrate the bounded-concurrency scan")
+    let sem = Arc::new(Semaphore::new(cfg.concurrency.max(1)));
+    let mut set = JoinSet::new();
+
+    let host = target.host.clone();
+
+    for &port in &target.ports {
+        let host = host.clone();
+        let cfg = cfg.clone();
+        let sem = sem.clone();
+
+        let permit = sem.acquire_owned().await.unwrap();
+
+        set.spawn(async move {
+            let outcome = probe_port(&host, port, &cfg).await;
+            drop(permit);
+            outcome
+        });
+    }
+
+    let mut outcomes = Vec::new();
+
+    while let Some(joined) = set.join_next().await {
+        outcomes.push(joined.unwrap());
+    }
+
+    outcomes.sort_by_key(|o| o.port);
+    outcomes
 }
 
 /// The deliberately-slow baseline: probe ports strictly one at a time.
@@ -91,7 +128,11 @@ pub async fn scan(target: &Target, cfg: &ScanConfig) -> Vec<ScanOutcome> {
 /// over `probe_port` — no semaphore, no spawning, no overlap. On a range with
 /// even a few `Filtered` ports it's brutal: every timeout is paid in series.
 pub async fn scan_sequential(target: &Target, cfg: &ScanConfig) -> Vec<ScanOutcome> {
-    // TODO (step 6): `for port in &target.ports { out.push(probe_port(...).await) }`.
-    let _ = (target, cfg);
-    todo!("sequential baseline scan")
+    let mut outcomes = Vec::new();
+
+    for &port in &target.ports {
+        outcomes.push(probe_port(&target.host, port, cfg).await);
+    }
+
+    outcomes
 }

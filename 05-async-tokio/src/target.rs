@@ -84,11 +84,50 @@ pub struct ScanOutcome {
 ///   3. Validate `start <= end` for ranges; collect into the port vec.
 ///   4. `sort_unstable` + `dedup`.
 pub fn parse_target(spec: &str) -> Result<Target, TargetError> {
-    // TODO (step 1): implement per the doc comment above. Pure function — no
-    // network, no async. Make the unit tests at the bottom pass first; they
-    // pin the exact semantics (mixed ranges, dedup, the error cases).
-    let _ = spec;
-    todo!("parse host:ports into a Target")
+    let (host, port_spec) = spec
+        .rsplit_once(':')
+        .ok_or(TargetError::MissingHostOrPorts)?;
+
+    if host.is_empty() || port_spec.is_empty() {
+        return Err(TargetError::MissingHostOrPorts);
+    }
+
+    let mut ports = Vec::new();
+
+    for token in port_spec.split(',') {
+        match token.split_once('-') {
+            // A range like "80-90": parse both bounds.
+            Some((start, end)) => {
+                let start: u16 = start.parse().map_err(|_| TargetError::BadPort {
+                    token: token.to_string(),
+                })?;
+                let end: u16 = end.parse().map_err(|_| TargetError::BadPort {
+                    token: token.to_string(),
+                })?;
+
+                if start > end {
+                    return Err(TargetError::EmptyRange { start, end });
+                }
+
+                ports.extend(start..=end);
+            }
+
+            None => {
+                let port: u16 = token.parse().map_err(|_| TargetError::BadPort {
+                    token: token.to_string(),
+                })?;
+                ports.push(port);
+            }
+        }
+    }
+
+    ports.sort_unstable();
+    ports.dedup();
+
+    Ok(Target {
+        host: host.to_string(),
+        ports,
+    })
 }
 
 #[cfg(test)]

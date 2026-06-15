@@ -18,37 +18,29 @@ use tokio::sync::watch;
 /// fan the signal out to all of them.
 #[derive(Clone)]
 pub struct Shutdown {
-    // `watch` holds a single latest value broadcast to all receivers. We use
-    // `bool`: false = running, true = shutting down. Keep the Sender alive
-    // inside the handle so `.trigger()` works from any clone.
-    //
-    // TODO (step 7): pick the field layout. A reasonable shape is
-    //   tx: Arc<watch::Sender<bool>>,
-    //   rx: watch::Receiver<bool>,
-    // (Sender isn't Clone, hence the Arc; Receiver is Clone.)
-    _tx: std::sync::Arc<watch::Sender<bool>>,
-    _rx: watch::Receiver<bool>,
+    tx: std::sync::Arc<watch::Sender<bool>>,
+    rx: watch::Receiver<bool>,
 }
 
 impl Shutdown {
     /// Create a fresh handle in the "running" state.
     pub fn new() -> Self {
-        // TODO (step 7): `let (tx, rx) = watch::channel(false);` and wrap.
-        todo!("construct the watch channel")
+        let (tx, rx) = watch::channel(false);
+        Shutdown {
+            tx: std::sync::Arc::new(tx),
+            rx,
+        }
     }
 
     /// Flip the flag to "shutting down". Idempotent — calling it twice is fine.
     pub fn trigger(&self) {
-        // TODO (step 7): `let _ = self._tx.send(true);` (send only errors if
-        // every receiver dropped, which we don't care about here).
-        todo!("broadcast the shutdown signal")
+        let _ = self.tx.send(true);
     }
 
     /// Has shutdown already been requested? Cheap, non-blocking — use it to
     /// bail out of an accept loop's next iteration.
     pub fn is_triggered(&self) -> bool {
-        // TODO (step 7): `*self._rx.borrow()`.
-        todo!("read the current flag")
+        *self.rx.borrow()
     }
 
     /// Resolve when shutdown is requested. Put this in a `select!` arm against
@@ -59,9 +51,17 @@ impl Shutdown {
     /// avoided so a `&Shutdown` shared across tasks can await it — clone the
     /// receiver locally instead.
     pub async fn cancelled(&self) {
-        // TODO (step 7): await the flag flipping to true.
-        let _rx = self._rx.clone();
-        todo!("await the shutdown flag")
+        let mut rx = self.rx.clone();
+
+        if *rx.borrow() {
+            return;
+        }
+
+        while rx.changed().await.is_ok() {
+            if *rx.borrow() {
+                return;
+            }
+        }
     }
 }
 
