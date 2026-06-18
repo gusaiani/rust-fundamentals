@@ -11,8 +11,15 @@
 //! proxied connections on a handful of threads, because every task spends
 //! almost all its time parked at an `.await` waiting for bytes.
 
-use tokio::io::copy_bidirectional;
+use std::time::Duration;
+
 use tokio::net::{TcpListener, TcpStream};
+use tokio::{io::copy_bidirectional, task::JoinSet};
+
+/// How long to let in-flight connections finish after shutdown is requested,
+/// before aborting the stragglers. A proxy can't drain unboundedly — a client
+/// that never closes would pin a task forever — so graceful means *bounded*.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 
 use crate::shutdown::Shutdown;
 
@@ -41,18 +48,47 @@ pub struct Transferred {
 ///     }
 /// }
 /// ```
-pub async fn run_proxy(
-    listen: &str,
-    upstream: &str,
-    shutdown: Shutdown,
-) -> std::io::Result<()> {
+pub async fn run_proxy(listen: &str, upstream: &str, shutdown: Shutdown) -> std::io::Result<()> {
     let listener = TcpListener::bind(listen).await?;
     eprintln!("aprobe proxy: {listen} -> {upstream} (Ctrl-C to drain & exit)");
 
-    // TODO (step 8): the select! accept loop described above. Spawn one task
-    // per connection; break on shutdown; let in-flight connections finish.
-    let _ = (listener, upstream, shutdown);
-    todo!("graceful accept loop")
+    let mut conns = JoinSet::new();
+
+    loop {
+        tokio::select! {
+            accepted = listener.accept() => {
+                let (inbound, _peer) = accepted?;
+                let upstream = upstream.to_string();
+
+                // Spawn the handler bare — do NOT race it against shutdown.
+                // Graceful drain means an in-flight transfer runs to its
+                // natural EOF; the shutdown signal only stops *accepting*
+                // (the outer select! arm below), then we wait for these
+                // tasks in the drain loop. Racing handle_conn against
+                // shutdown here would drop copy_bidirectional mid-write —
+                // abrupt cancellation, the exact thing draining prevents.
+                conns.spawn(async move {
+                    let _ = handle_conn(inbound, &upstream).await;
+                });
+            }
+
+            _ = shutdown.cancelled() => break,
+        }
+    }
+
+    // Graceful drain, bounded. Stop accepting (the loop already broke), then
+    // give in-flight connections up to DRAIN_TIMEOUT to finish naturally. If
+    // the deadline passes — e.g. a client that never hangs up — abort the
+    // stragglers so we don't block shutdown forever. Connections that finish
+    // in time close cleanly; only the ones over the deadline get cut.
+    let drain = async {
+        while conns.join_next().await.is_some() {}
+    };
+    if tokio::time::timeout(DRAIN_TIMEOUT, drain).await.is_err() {
+        conns.shutdown().await;
+    }
+
+    Ok(())
 }
 
 /// Proxy one client connection to `upstream`.
@@ -66,14 +102,14 @@ pub async fn run_proxy(
 /// Errors (upstream refused, connection reset mid-stream) are returned, not
 /// panicked — one bad connection must never take the proxy down. The caller
 /// logs and moves on.
-pub async fn handle_conn(
-    mut inbound: TcpStream,
-    upstream: &str,
-) -> std::io::Result<Transferred> {
-    // TODO (step 8): connect upstream, copy_bidirectional, return the counts.
-    // (`copy_bidirectional` is imported above and unused until you wire it —
-    // that's the one warning you'll see against the stubbed tree.)
-    let _ = &mut inbound;
-    let _ = upstream;
-    todo!("dial upstream and pump bytes both ways")
+pub async fn handle_conn(mut inbound: TcpStream, upstream: &str) -> std::io::Result<Transferred> {
+    let mut upstream = TcpStream::connect(upstream).await?;
+
+    let (client_to_upstream, upstream_to_client) =
+        copy_bidirectional(&mut inbound, &mut upstream).await?;
+
+    Ok(Transferred {
+        client_to_upstream,
+        upstream_to_client,
+    })
 }
