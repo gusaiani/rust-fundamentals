@@ -48,10 +48,16 @@ async fn scan_finds_an_open_port() {
         }
     });
 
-    // open_port is live; open_port+1 is (almost surely) dead.
+    // open_port is live. For a guaranteed-dead port, bind a second ephemeral
+    // listener and immediately drop it: the OS just released that port, nothing
+    // listens there, so a connect RSTs → Closed. Robust under parallel tests,
+    // unlike guessing open_port+1 (which can land on another test's listener).
+    let (dead, dead_port) = ephemeral().await;
+    drop(dead);
+
     let target = Target {
         host: "127.0.0.1".to_string(),
-        ports: vec![open_port, open_port.wrapping_add(1)],
+        ports: vec![open_port, dead_port],
     };
     let cfg = ScanConfig {
         concurrency: 8,
@@ -63,7 +69,7 @@ async fn scan_finds_an_open_port() {
 
     assert_eq!(state(open_port), Some(PortState::Open), "live port should be Open");
     assert_eq!(
-        state(open_port.wrapping_add(1)),
+        state(dead_port),
         Some(PortState::Closed),
         "dead localhost port should RST → Closed"
     );
