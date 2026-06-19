@@ -1,0 +1,78 @@
+[package]
+name = "taskline"
+version = "0.1.0"
+edition = "2021"
+description = "A production-grade REST API in Rust: axum + Postgres + JWT auth, with validation, middleware, and a hand-rolled OpenAPI document"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/taskline"
+keywords = ["axum", "sqlx", "postgres", "jwt", "rest-api"]
+categories = ["web-programming::http-server", "database", "authentication"]
+readme = "README.md"
+
+[[bin]]
+name = "taskline"
+path = "src/bin/taskline.rs"
+
+[[bench]]
+name = "auth"
+harness = false
+
+[dependencies]
+# The web framework + its server. axum 0.8 uses native async-fn extractors
+# (no #[async_trait]) and `{param}` path syntax.
+axum = "0.8"
+
+# Async runtime. We need fewer tokio features here than Module 5 — axum/hyper
+# own the sockets — but still the multi-thread scheduler, macros, and signal
+# (for graceful shutdown in the binary).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+
+# tower is the middleware abstraction (Service/Layer); tower-http ships the
+# batteries we use: a per-request tracing span and a request timeout.
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "timeout"] }
+
+# Postgres toolkit. runtime-tokio + tls-rustls = async, pure-Rust TLS.
+# The type features (uuid, chrono) wire Postgres uuid/timestamptz to Rust types;
+# macros + migrate unlock sqlx::migrate!() and #[sqlx::test].
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "macros",
+    "migrate",
+] }
+
+# JSON in and out.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth primitives.
+jsonwebtoken = "9"                                  # JWT encode/decode (Pill 8)
+argon2 = { version = "0.5", features = ["std"] }    # salted, memory-hard hashing (Pill 7)
+
+# Domain types that cross the DB boundary.
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Structured logging — the TraceLayer emits into this (Pill 10; full treatment
+# in Module 12).
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# The benchmark is sync/CPU-bound (argon2 vs JWT verify), so plain criterion —
+# no async_tokio feature needed this time.
+criterion = "0.5"
+
+# A real HTTP client for the worked `examples/smoke.rs` end-to-end flow.
+reqwest = { version = "0.12", features = ["json"] }
+
+# The integration tests drive the router in-process with oneshot, but still
+# need a tokio runtime and HTTP request/body types.
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }    # ServiceExt::oneshot
