@@ -4,10 +4,15 @@
 //! middleware wiring) is **step 6**.
 
 use axum::extract::FromRef;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use axum::Router;
 use sqlx::PgPool;
+use std::time::Duration;
+use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
 
 use crate::auth::AuthConfig;
+use crate::{handlers, openapi};
 
 /// Everything a handler can reach via `State<AppState>` (Pill 4). `Clone` is
 /// cheap: `PgPool` is an `Arc`, `AuthConfig` holds small keys.
@@ -48,7 +53,29 @@ impl FromRef<AppState> for AuthConfig {
 ///     .layer(TimeoutLayer::new(Duration::from_secs(10)))
 ///     .with_state(state)
 /// ```
+
 pub fn build_app(state: AppState) -> Router {
-    let _ = state;
-    todo!("wire routes + layers + with_state")
+    let router = Router::new()
+        .route("/health", get(|| async { "ok" }))
+        .route("/openapi.json", get(openapi::openapi))
+        .route("/auth/register", post(handlers::register))
+        .route("/auth/login", post(handlers::login))
+        .route(
+            "/tasks",
+            get(handlers::list_tasks).post(handlers::create_task),
+        )
+        .route(
+            "/tasks/{id}",
+            get(handlers::get_task)
+                .patch(handlers::update_task)
+                .delete(handlers::delete_task),
+        );
+
+    router
+        .layer(TraceLayer::new_for_http())
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(10),
+        ))
+        .with_state(state)
 }
