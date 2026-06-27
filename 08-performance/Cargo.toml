@@ -1,0 +1,53 @@
+[package]
+name = "brc"
+version = "0.1.0"
+edition = "2021"
+description = "A One Billion Row Challenge solver in Rust, driven from a naive baseline to 10x+: mmap, zero-copy byte parsing, integer-domain temperatures, a fast hasher, SIMD line scanning (memchr), and hand-rolled per-core parallelism — every win proven by a benchmark"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/brc"
+keywords = ["1brc", "performance", "benchmark", "simd", "mmap"]
+categories = ["command-line-utilities", "parsing"]
+readme = "README.md"
+
+[[bin]]
+name = "brc"
+path = "src/bin/brc.rs"
+
+# The data generator — make a measurements.txt of any size, deterministically.
+[[bin]]
+name = "gen"
+path = "src/bin/gen.rs"
+
+[[bench]]
+name = "aggregate"
+harness = false
+
+# A release profile tuned for the final numbers. `lto` and a single codegen
+# unit let the optimizer see across the whole crate; `panic = "abort"` drops
+# unwinding tables. Build the curve with `cargo build --release` throughout.
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+# Memory-mapped file I/O (Pill 5): map the 13 GB file into the address space and
+# parse straight out of the page cache — no read() syscall in the hot loop, no
+# copy into a userspace buffer. The `unsafe` on `Mmap::map` is an honest
+# contract: the file must not be mutated underneath the map.
+memmap2 = "0.9"
+
+# SIMD byte search (Pill 11) with no intrinsics of your own: `memchr` detects
+# CPU features at runtime and vectorizes finding ';' and '\n'. This is how you
+# vectorize line scanning for free before reaching for hand-written std::simd.
+memchr = "2"
+
+[dev-dependencies]
+# The benchmark is sync and CPU-bound (parse throughput, aggregation), so plain
+# criterion — statistically rigorous timing with warm-up and black_box (Pill 1).
+criterion = "0.5"
+
+# Heap allocation profiler (Pill 13): prove the optimized hot loop allocates
+# O(stations x threads), not O(rows). Used by examples/alloc_profile.rs.
+dhat = "0.3"

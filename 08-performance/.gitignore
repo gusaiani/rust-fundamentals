@@ -1,0 +1,9 @@
+/target
+# generated input files — they're huge (up to ~13 GB); regenerate with `gen`
+measurements.txt
+*.txt
+!Cargo.toml
+# profiler output
+flamegraph.svg
+perf.data*
+dhat-heap.json
