@@ -1,0 +1,45 @@
+[package]
+name = "rudis"
+version = "0.1.0"
+edition = "2021"
+description = "A minimal Redis-compatible server in Rust: a hand-written mio event loop speaking the RESP wire protocol, with snapshot persistence (mmap load) and signal-driven graceful shutdown"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/rudis"
+keywords = ["redis", "resp", "mio", "event-loop", "systems"]
+categories = ["network-programming", "database-implementations"]
+readme = "README.md"
+
+[[bin]]
+name = "rudis"
+path = "src/bin/rudis.rs"
+
+[[bench]]
+name = "resp"
+harness = false
+
+[dependencies]
+# The event loop. mio is the thin, cross-platform skin over epoll (Linux),
+# kqueue (macOS/BSD), and IOCP (Windows) — the readiness API that `tokio` is
+# built on. We use it directly here so you see what a runtime hides (Pill 4).
+mio = { version = "1.0", features = ["os-poll", "net"] }
+
+# Signals, done right. Registering a raw handler that mutates your data is
+# undefined behaviour (Pill 12); signal-hook delivers signals safely, and
+# signal-hook-mio turns "a signal arrived" into a readable event in the *same*
+# poll loop as your sockets — one loop, no special cases.
+signal-hook = "0.3"
+signal-hook-mio = { version = "0.2", features = ["support-v1_0"] }
+
+# Memory-mapped file I/O (Pill 11): map the snapshot into the address space and
+# parse the keyspace straight out of the page cache, no read() loop.
+memmap2 = "0.9"
+
+# Error plumbing — the Module 3 discipline (one enum, `#[from]` conversions, `?`
+# everywhere). The protocol parser and the store share one `Error`.
+thiserror = "2"
+
+[dev-dependencies]
+# The benchmark is sync and CPU-bound (RESP parse throughput, store ops), so
+# plain criterion — no async harness needed.
+criterion = "0.5"
