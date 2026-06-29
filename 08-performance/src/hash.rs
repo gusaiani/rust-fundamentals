@@ -25,24 +25,28 @@ pub struct FxHasher {
 impl FxHasher {
     /// Mix one 64-bit word into the running hash.
     ///
-    /// TODO (step 3): `self.hash = (self.hash.rotate_left(5) ^ word).wrapping_mul(SEED);`
     #[inline]
-    fn add(&mut self, word: u64) {
-        let _ = word;
-        todo!("rotate_left(5) ^ word, then wrapping_mul(SEED) — see step 3 hint")
+    fn mix(&mut self, word: u64) {
+        // rotate so high bits influence low bits, xor in the word, then multiply
+        // by SEED to diffuse - wrapping_mul because overflow is intended.
+        self.hash = (self.hash.rotate_left(5) ^ word).wrapping_mul(SEED);
     }
 }
 
 impl Hasher for FxHasher {
     /// Feed bytes in 8-byte chunks (zero-padding the last partial chunk), mixing
-    /// each into the state with [`FxHasher::add`].
+    /// each into the state with [`FxHasher::mix`].
     ///
     /// TODO (step 3): iterate `bytes.chunks(8)`, pack each into a `[u8; 8]`,
-    /// `u64::from_le_bytes`, and `self.add(..)`. See the step-3 hint.
+    /// `u64::from_le_bytes`, and `self.mix(..)`. See the step-3 hint.
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
-        let _ = bytes;
-        todo!("hash bytes 8 at a time — see step 3 hint")
+        for chunk in bytes.chunks(8) {
+            // last chunk may be < 8 bytes
+            let mut buf = [0u8; 8]; // zero-padded so short tails are well-defined
+            buf[..chunk.len()].copy_from_slice(chunk);
+            self.mix(u64::from_le_bytes(buf)); // 8 bytes -> one u64 word, then mix
+        }
     }
 
     #[inline]
@@ -79,7 +83,7 @@ mod tests {
 
     #[test]
     fn empty_is_seed_independent_of_panic() {
-        // An empty key must hash without touching `add`'s missing impl path
+        // An empty key must hash without touching `mix`'s missing impl path
         // beyond the (legal) zero-chunk case; just assert it returns *something*.
         let h = hash_of(b"");
         let _ = h;

@@ -24,33 +24,36 @@ pub struct Stats {
 impl Default for Stats {
     /// The identity for `record`: min starts at +inf, max at -inf (in tenths).
     fn default() -> Self {
-        Stats { min: i32::MAX, max: i32::MIN, sum: 0, count: 0 }
+        Stats {
+            min: i32::MAX,
+            max: i32::MIN,
+            sum: 0,
+            count: 0,
+        }
     }
 }
 
 impl Stats {
     /// Fold one measurement (in tenths) into the accumulator.
-    ///
-    /// TODO (step 2): update min, max, sum, count. See the step-2 hint.
     pub fn record(&mut self, temp: i32) {
-        let _ = temp;
-        todo!("update min/max/sum/count — see Pill/step 2 hint")
+        self.min = self.min.min(temp);
+        self.max = self.max.max(temp);
+        self.sum += temp as i64; // a billion values can't overflow
+        self.count += 1;
     }
 
     /// Fold another (partial) `Stats` into this one — used to merge per-thread
     /// maps in the parallel path (Pill 12).
-    ///
-    /// TODO (step 2): combine min/max/sum/count of `other` into `self`.
     pub fn merge(&mut self, other: &Stats) {
-        let _ = other;
-        todo!("combine two Stats — see step 2 hint")
+        self.min = self.min.min(other.min);
+        self.max = self.max.max(other.max);
+        self.sum += other.sum;
+        self.count += other.count;
     }
 
     /// Mean temperature in degrees Celsius (float only here, out of the hot loop).
-    ///
-    /// TODO (step 2): sum is in tenths, so divide by 10 and by count.
     pub fn mean(&self) -> f64 {
-        todo!("sum as f64 / 10.0 / count")
+        self.sum as f64 / 10.0 / self.count as f64
     }
 }
 
@@ -60,12 +63,15 @@ impl Stats {
 /// `min`/`max` are tenths (divide by 10.0); `mean` comes from [`Stats::mean`].
 /// All three print with one decimal (`{:.1}`). The `BTreeMap` gives the
 /// alphabetical ordering the spec requires.
-///
-/// TODO (step 2): build the `{...}` string. Names are UTF-8 — `String::from_utf8_lossy`
-/// (or `std::str::from_utf8`) turns the `&[u8]` key back into text for display.
 pub fn format_results(stats: &BTreeMap<Vec<u8>, Stats>) -> String {
-    let _ = stats;
-    todo!("render {{Name=min/mean/max, ...}} — see step 2 hint")
+    let mut parts: Vec<String> = Vec::new();
+    for (name, s) in stats {
+        let name = String::from_utf8_lossy(name);
+        let min = s.min as f64 / 10.0;
+        let max = s.max as f64 / 10.0;
+        parts.push(format!("{name}={min:.1}/{:.1}/{max:.1}", s.mean()));
+    }
+    format!("{{{}}}", parts.join(", "))
 }
 
 /// Sort a borrowed-key map (the hot-loop representation) into the owned,
@@ -129,6 +135,9 @@ mod tests {
         alpha.record(-15); // -1.5
         map.insert(b"Bravo".to_vec(), bravo);
         map.insert(b"Alpha".to_vec(), alpha);
-        assert_eq!(format_results(&map), "{Alpha=-1.5/-1.5/-1.5, Bravo=5.0/5.0/5.0}");
+        assert_eq!(
+            format_results(&map),
+            "{Alpha=-1.5/-1.5/-1.5, Bravo=5.0/5.0/5.0}"
+        );
     }
 }

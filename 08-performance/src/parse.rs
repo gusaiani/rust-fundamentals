@@ -14,8 +14,10 @@
 /// TODO (step 1): find the `;` with `memchr::memchr` and slice around it. See the
 /// Pill 6 example and the step-1 hint in the README.
 pub fn split_line(line: &[u8]) -> (&[u8], &[u8]) {
-    let _ = line;
-    todo!("split on ';' with memchr — see Pill 6")
+    // memchr returns the index of the first b';'. The input is well-formed,
+    // so every line has exactly one - `expect` documents that we trust it.
+    let i = memchr::memchr(b';', line).expect("every line has a ';'");
+    (&line[..i], &line[i + 1..]) // name = before ';', temp = after it
 }
 
 /// Parse a temperature in the fixed 1BRC format into tenths of a degree.
@@ -28,8 +30,26 @@ pub fn split_line(line: &[u8]) -> (&[u8], &[u8]) {
 /// (`[d, b'.', d]` vs `[d, d, b'.', d]`) and fold the ASCII digits into an i32.
 /// See Pill 7 for the near-complete version.
 pub fn parse_temp(bytes: &[u8]) -> i32 {
-    let _ = bytes;
-    todo!("parse fixed-point tenths as i32 — see Pill 7")
+    // Strip a leading '-' if present; remember the sign, keep the digit bytes.
+    let (neg, bytes) = match bytes {
+        [b'-', rest @ ..] => (true, rest), // `rest @ ..` binds the remaining slice
+        _ => (false, bytes),
+    };
+
+    // After the sign the shape is fixed: "d.d" or "dd.d". Fold into tenths.
+    let v = match bytes {
+        [d1, b'.', d2] => (d1 - b'0') as i32 * 10 + (d2 - b'0') as i32,
+        [d1, d2, b'.', d3] => {
+            (d1 - b'0') as i32 * 100 + (d2 - b'0') as i32 * 10 + (d3 - b'0') as i32
+        }
+        _ => unreachable!("malformed temperature"),
+    };
+
+    if neg {
+        -v
+    } else {
+        v
+    }
 }
 
 #[cfg(test)]

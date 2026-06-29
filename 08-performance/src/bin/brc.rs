@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use brc::aggregate::format_results;
 use brc::io::map_file;
 use brc::runner::{run_parallel, run_sequential};
 
@@ -42,7 +43,9 @@ fn main() -> ExitCode {
 
     // Default to one worker per available core.
     let threads = threads.unwrap_or_else(|| {
-        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
     });
 
     // --- the run (TODO, step 5) ---
@@ -57,18 +60,21 @@ fn main() -> ExitCode {
 
     let start = Instant::now();
 
-    // TODO (step 5): pick the path by `threads` (1 -> run_sequential, else
-    // run_parallel), then `format_results` the result and print it to stdout.
-    // Keep the call inside the timed region; keep printing/formatting in it too
-    // if you want the output cost included, or stop the clock first if you only
-    // want the compute. Be explicit about which you're measuring (Pill 1).
-    let _ = (data, threads, run_sequential as fn(&[u8]) -> _, run_parallel as fn(&[u8], usize) -> _);
-    todo!("run the aggregation, format, and print — see step 5");
+    let result = if threads <= 1 {
+        run_sequential(data)
+    } else {
+        run_parallel(data, threads)
+    };
 
-    #[allow(unreachable_code)]
-    {
-        let elapsed = start.elapsed();
-        eprintln!("{} rows in {:?} ({} threads)", data.len(), elapsed, threads);
-        ExitCode::SUCCESS
-    }
+    let output = format_results(&result);
+    let elapsed = start.elapsed();
+
+    println!("{output}");
+    eprintln!(
+        "{} bytes in {:?} ({} threads)",
+        data.len(),
+        elapsed,
+        threads
+    );
+    ExitCode::SUCCESS
 }

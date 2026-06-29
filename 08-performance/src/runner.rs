@@ -18,20 +18,26 @@ use crate::parse::{parse_temp, split_line};
 /// temperature, and fold it in via the entry API so each row is **one** hash and
 /// **one** probe with **no** allocation. Keys borrow `data`, so the returned map
 /// is tied to `data`'s lifetime.
-///
-/// TODO (step 4): implement the loop. See the step-4 hint.
 pub fn aggregate<'a>(data: &'a [u8]) -> FastMap<&'a [u8], Stats> {
-    let _ = (data, split_line as fn(&[u8]) -> (&[u8], &[u8]), parse_temp as fn(&[u8]) -> i32);
-    todo!("memchr_iter lines -> split -> parse -> entry().record() — see step 4 hint")
+    let mut map: FastMap<&[u8], Stats> = FastMap::default();
+    let mut start = 0; // index just past the previous '\n'
+
+    for nl in memchr::memchr_iter(b'\n', data) {
+        let line = &data[start..nl];
+        start = nl + 1;
+
+        let (name, temp) = split_line(line); // &[u8] name, &[u8] temp
+        let temp = parse_temp(temp); // i32 tenths
+        map.entry(name).or_default().record(temp); // one hash, one probe, no alloc
+    }
+
+    map
 }
 
 /// Single-core path: aggregate the whole buffer, then sort for output.
-///
-/// TODO (step 4): call [`aggregate`] over all of `data` and hand the result to
-/// [`into_sorted`].
 pub fn run_sequential(data: &[u8]) -> BTreeMap<Vec<u8>, Stats> {
-    let _ = (data, into_sorted as fn(FastMap<&[u8], Stats>) -> BTreeMap<Vec<u8>, Stats>);
-    todo!("aggregate(data) then into_sorted(..) — see step 4")
+    let map = aggregate(data);
+    into_sorted(map)
 }
 
 /// Parallel path (Pill 12): split `data` into `threads` newline-aligned chunks,
@@ -44,7 +50,11 @@ pub fn run_sequential(data: &[u8]) -> BTreeMap<Vec<u8>, Stats> {
 /// TODO (step 8): implement split -> scoped fan-out -> merge -> sort. See the
 /// step-4/8 hint. If `threads <= 1`, just defer to [`run_sequential`].
 pub fn run_parallel(data: &[u8], threads: usize) -> BTreeMap<Vec<u8>, Stats> {
-    let _ = (data, threads, split_chunks as fn(&[u8], usize) -> Vec<&[u8]>);
+    let _ = (
+        data,
+        threads,
+        split_chunks as fn(&[u8], usize) -> Vec<&[u8]>,
+    );
     todo!("thread::scope over split_chunks, merge per-thread maps — see step 8 hint")
 }
 

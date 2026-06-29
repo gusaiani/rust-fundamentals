@@ -19,6 +19,11 @@ path = "src/bin/brc.rs"
 name = "gen"
 path = "src/bin/gen.rs"
 
+# v0 - the naive baseline, kept as its own binary so we can `time` it directly.
+[[bin]]
+name = "baseline"
+path = "src/bin/baseline.rs"
+
 [[bench]]
 name = "aggregate"
 harness = false
