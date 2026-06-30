@@ -46,16 +46,33 @@ pub fn run_sequential(data: &[u8]) -> BTreeMap<Vec<u8>, Stats> {
 /// Use [`std::thread::scope`] so each worker can borrow `&[u8]` slices into `data`
 /// with no `Arc` and no `'static` bound — the scope guarantees the threads finish
 /// before `data` could be dropped. Merge with [`Stats::merge`].
-///
-/// TODO (step 8): implement split -> scoped fan-out -> merge -> sort. See the
-/// step-4/8 hint. If `threads <= 1`, just defer to [`run_sequential`].
 pub fn run_parallel(data: &[u8], threads: usize) -> BTreeMap<Vec<u8>, Stats> {
-    let _ = (
-        data,
-        threads,
-        split_chunks as fn(&[u8], usize) -> Vec<&[u8]>,
-    );
-    todo!("thread::scope over split_chunks, merge per-thread maps — see step 8 hint")
+    if threads <= 1 {
+        return run_sequential(data);
+    }
+
+    let chunks = split_chunks(data, threads);
+
+    let partials = std::thread::scope(|scope| {
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| scope.spawn(|| aggregate(chunk)))
+            .collect();
+
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+
+    let mut global: FastMap<&[u8], Stats> = FastMap::default();
+    for partial in partials {
+        for (name, stats) in partial {
+            global.entry(name).or_default().merge(&stats);
+        }
+    }
+
+    into_sorted(global)
 }
 
 #[cfg(test)]
