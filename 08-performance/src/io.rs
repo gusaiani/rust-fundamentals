@@ -30,14 +30,34 @@ pub fn map_file(path: &Path) -> io::Result<Mmap> {
 ///
 /// Strategy: aim for `data.len() / n`-sized pieces, then walk each cut forward to
 /// the next newline before slicing. The last chunk takes whatever remains.
-///
-/// TODO (step 7): implement the boundary-aligned split. See the step-7 hint for a
-/// near-complete version. Edge cases to keep green: empty input -> no chunks;
-/// `n == 1` -> the whole slice; `n` larger than the line count -> fewer, non-empty
-/// chunks (never empty ones).
 pub fn split_chunks(data: &[u8], n: usize) -> Vec<&[u8]> {
-    let _ = (data, n);
-    todo!("tile the buffer into n newline-aligned chunks — see step 7 hint")
+    if data.is_empty() {
+        return Vec::new();
+    }
+
+    let mut chunks = Vec::with_capacity(n);
+    let approx = data.len() / n;
+    let mut start = 0;
+
+    for _ in 0..n - 1 {
+        let mut end = (start + approx).min(data.len());
+        while end < data.len() && data[end] != b'\n' {
+            end += 1;
+        }
+        if end < data.len() {
+            end += 1;
+        }
+        chunks.push(&data[start..end]);
+        start = end;
+        if start >= data.len() {
+            break;
+        }
+    }
+
+    if start < data.len() {
+        chunks.push(&data[start..]);
+    }
+    chunks
 }
 
 #[cfg(test)]

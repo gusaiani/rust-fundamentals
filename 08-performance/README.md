@@ -79,7 +79,19 @@ Depth — flamegraphs, branch prediction, the memory hierarchy, hand-written SIM
 
 ## Status
 
-Work in progress — this is a scaffold. The core library functions are `todo!()` stubs, so `brc`, the tests, the bench, and the example all panic until you implement them. `cargo check --all-targets` passes and `gen` runs today.
+Complete. Every library stub is implemented — zero-copy parsing, integer temperatures, the FxHash hasher, newline-aligned chunking, and both the sequential and `thread::scope` parallel drivers. `cargo test` passes all suites (unit + integration, including the parallel-vs-sequential agreement check).
+
+## Results
+
+The same binary, measured two ways on a 10-core machine (32 GB RAM). `v4` is the single-core stack (mmap + zero-copy + integer parse + FxHash + memchr, run with `--threads 1`); `v5` adds parallelism across all cores.
+
+| Version | Change | 1M rows (warm cache) | 1B rows (~13 GB) |
+| --- | --- | --- | --- |
+| v0 | naive `BufReader` + `String` + `f64` + SipHash | 71 ms — 1× | 74.7 s — 1× |
+| v4 | mmap + zero-copy + integer temps + FxHash + memchr | 21 ms — 3.3× | 39.3 s — 1.9× |
+| v5 | + parallel (10 threads) | 4.0 ms — 17.8× | 10.2 s — 7.3× |
+
+The two columns tell different stories because the bottleneck moves with the input size. On 1M rows the 12.6 MB file lives in cache, so the work is CPU-bound and every compute optimization pays full freight (17.8×). On 1B rows the 12.6 GB file no longer fits comfortably in cache, so the scan becomes memory-bandwidth and page-fault bound — parallel ran at ~285% CPU, not ~1000%, and the curve compresses to 7.3×. A speedup is not a property of the code alone; it is a property of the code *and* the regime it runs in. The 1B figures are an indicative floor (measured on a busy machine), not a tuned best.
 
 The concept pills and the step-by-step build — covering criterion, flamegraphs, mmap, zero-copy parsing, hashing, branch prediction, SIMD, and parallelism — live in [`README-LEARN.md`](./README-LEARN.md).
 
