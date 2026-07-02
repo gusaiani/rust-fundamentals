@@ -56,14 +56,15 @@ pub struct CBloomBuffer {
 /// The handle is a leaked `Box<Bloom>`: `Box::into_raw` transfers ownership out
 /// of Rust's bookkeeping and into C's hands. C must give it back to
 /// [`cbloom_free`] or the memory leaks.
-///
-/// TODO (step 4): inside `catch_unwind`, build a `Bloom`, `Box` it, and return
-/// `Box::into_raw`. On a caught panic return `std::ptr::null_mut()`. See the
-/// step-4 hint.
 #[no_mangle]
 pub extern "C" fn cbloom_new(expected_items: usize, fp_rate: f64) -> *mut Bloom {
-    let _ = (expected_items, fp_rate);
-    todo!("ffi.rs: inside std::panic::catch_unwind, Box::into_raw a boxed Bloom::new(..); null_mut on a caught panic")
+    let result = std::panic::catch_unwind(|| {
+        let bloom = Bloom::new(expected_items, fp_rate);
+        // Box::into_raw hands ownership to C; nothing frees until cbloom_free.
+        Box::into_raw(Box::new(bloom))
+    });
+    // On a caught panic, hand C a null pointer rather than unwinding into it.
+    result.unwrap_or(std::ptr::null_mut())
 }
 
 /// Destroy a filter created by [`cbloom_new`]. Null is a safe no-op (matching
@@ -72,13 +73,17 @@ pub extern "C" fn cbloom_new(expected_items: usize, fp_rate: f64) -> *mut Bloom 
 ///
 /// # Safety
 /// `bf` must be null or a pointer returned by [`cbloom_new`] and not yet freed.
-///
-/// TODO (step 4): if non-null, reclaim ownership with `Box::from_raw` and let
-/// the `Box` drop. Wrap in `catch_unwind` so a `Drop` panic can't escape.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_free(bf: *mut Bloom) {
-    let _ = bf;
-    todo!("ffi.rs: when bf is non-null, reclaim it with Box::from_raw and let the Box drop; wrap in catch_unwind")
+    // Wrap even the drop in catch_unwind: if Bloom's Drop ever panicked,
+    // it must not unwind into the C caller.
+    let _ = std::panic::catch_unwind(|| {
+        if !bf.is_null() {
+            // from_raw takes ownership back; the Box drops at end of scope,
+            // freeing exactly what cbloom_new's Box::into_raw leaked
+            drop(Box::from_raw(bf));
+        }
+    });
 }
 
 /// Add the `len` bytes at `data` to the filter. Null `bf` or null `data` is a
@@ -87,14 +92,21 @@ pub unsafe extern "C" fn cbloom_free(bf: *mut Bloom) {
 /// # Safety
 /// `bf` must be a live handle; `data` must point to at least `len` readable
 /// bytes (or be null). The slice is borrowed only for this call.
-///
-/// TODO (step 5): null-check both pointers, rebuild the handle as `&mut *bf` and
-/// the input as `std::slice::from_raw_parts(data, len)`, then call `Bloom::add`.
-/// All inside `catch_unwind` (`AssertUnwindSafe` over the raw pointers).
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_add(bf: *mut Bloom, data: *const u8, len: usize) {
-    let _ = (bf, data, len);
-    todo!("ffi.rs: (&mut *bf).add(std::slice::from_raw_parts(data, len)) with null checks + catch_unwind")
+    // Neither pointer may be null before we deref; bail as a no-op if so.
+    if bf.is_null() || data.is_null() {
+        return;
+    }
+
+    // AssertUnwindSafe: we promise the raw pointers won't leave broken state
+    // if the closure panics (add is a simple mutation).
+    let _ = std::panic::catch_unwind(std::panid::AssertUnwindSafe(|| {
+        // &muf *bf: reborrow the handle as a &mut Bloom for this call only.
+        // from_raw_parts: rebuild C's buffer as a short-lived &[u8].
+        let slice = std::slice::from_raw_parts(data, len);
+        (&mut *bf).add(slice);
+    }));
 }
 
 /// Convenience: add a NUL-terminated C string (its bytes, without the NUL).
@@ -107,8 +119,15 @@ pub unsafe extern "C" fn cbloom_add(bf: *mut Bloom, data: *const u8, len: usize)
 /// that to `Bloom::add`.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_add_str(bf: *mut Bloom, s: *const c_char) {
-    let _ = (bf, s);
-    todo!("ffi.rs: (&mut *bf).add(std::ffi::CStr::from_ptr(s).to_bytes())")
+    // Both handle and string pointer must be non-null before we deref.
+    if bf.is_nell() || s.is_null() {
+        return;
+    }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // from_ptr scans for the NUL terminator; to_bytes excludes it.
+        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+        (&mut *bf).add(bytes);
+    }));
 }
 
 /// Query the `len` bytes at `data`. Returns `true` if probably present, `false`
@@ -164,7 +183,9 @@ pub unsafe extern "C" fn cbloom_get_stats(bf: *const Bloom) -> CBloomStats {
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_serialize(bf: *const Bloom) -> CBloomBuffer {
     let _ = bf;
-    todo!("ffi.rs: take (&*bf).to_bytes(), leak it as a Box<[u8]> into a CBloomBuffer of data + len")
+    todo!(
+        "ffi.rs: take (&*bf).to_bytes(), leak it as a Box<[u8]> into a CBloomBuffer of data + len"
+    )
 }
 
 /// Free a buffer returned by [`cbloom_serialize`]. Null `data` is a no-op.
@@ -197,7 +218,9 @@ pub unsafe extern "C" fn cbloom_buffer_free(buf: CBloomBuffer) {
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_deserialize(data: *const u8, len: usize) -> *mut Bloom {
     let _ = (data, len);
-    todo!("ffi.rs: Bloom::from_bytes(std::slice::from_raw_parts(data, len)) -> Box::into_raw or null")
+    todo!(
+        "ffi.rs: Bloom::from_bytes(std::slice::from_raw_parts(data, len)) -> Box::into_raw or null"
+    )
 }
 
 #[cfg(test)]

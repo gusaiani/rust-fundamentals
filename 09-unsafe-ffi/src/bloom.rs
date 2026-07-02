@@ -135,6 +135,9 @@ impl Bloom {
         buf.extend_from_slice(&self.num_hashes.to_le_bytes());
         buf.extend_from_slice(&self.inserted.to_le_bytes());
         buf.extend_from_slice(&(self.num_bits as u64).to_le_bytes());
+        for &word in &self.bits {
+            buf.extend_from_slice(&word.to_le_bytes());
+        }
         buf
     }
 
@@ -143,13 +146,44 @@ impl Bloom {
     ///
     /// Validate *before* trusting any length — this is the deserialization that,
     /// on the C side, runs on bytes from a file or socket (Pill 8).
-    ///
-    /// TODO (step 3): check `MAGIC`/`VERSION`, read the header back with
-    /// `u64::from_le_bytes`/`u32::from_le_bytes`, verify the remaining length
-    /// matches `num_bits / 64` words, then read the words.
     pub fn from_bytes(data: &[u8]) -> Option<Bloom> {
-        let _ = (data, MAGIC, VERSION);
-        todo!("bloom.rs: validate magic/version/length, then read header + words back")
+        // Bail if the buffer can't even hold the fixed 25-byte header.
+        if data.len() < 25 {
+            return None;
+        }
+
+        // Reject foreign/corrupt buffers before trusting any field.
+        if data[0..4] != MAGIC || data[4] != VERSION {
+            return None;
+        }
+
+        // Offsets follow the to_bytes layout: 4 magic + 1 version, then the fields.
+        let num_hashes = u32::from_le_bytes(data[5..9].try_into().unwrap());
+        let inserted = u64::from_le_bytes(data[9..17].try_into().unwrap());
+        let num_bits = u64::from_le_bytes(data[17..25].try_into().unwrap()) as usize;
+
+        let word_count = num_bits / 64;
+
+        // Each word is 8 bytes; the tail after the header must match exactly.
+        let expected_len = 25 + word_count * 8;
+        if data.len() != expected_len {
+            return None;
+        }
+
+        // chunks_exact(8) gives clean [u8]-of-8 slices; the length check
+        // above guarantees it divides evenly with no remaindr
+        let mut bits = Vec::with_capacity(word_count);
+        for chunk in data[25..].chunks_exact(8) {
+            bits.push(u64::from_le_bytes(chunk.try_into().unwrap()));
+        }
+
+        // Reassemble the filter from the validated header + words.
+        Some(Bloom {
+            bits,
+            num_bits,
+            num_hashes,
+            inserted,
+        })
     }
 }
 
