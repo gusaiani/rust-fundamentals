@@ -1,0 +1,8 @@
+/target
+# compiled C/Python consumers and their build artifacts
+consumers/consumer
+consumers/*.o
+__pycache__/
+*.pyc
+# generated header, if you regenerate it with cbindgen into a scratch path
+/include/cbloom.generated.h

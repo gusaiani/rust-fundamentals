@@ -1,0 +1,56 @@
+[package]
+name = "cbloom"
+version = "0.1.0"
+edition = "2021"
+description = "A Bloom filter with a C ABI: a safe Rust core wrapped in a hand-written `extern \"C\"` boundary, shipped as a C shared/static library and consumed from C and Python — the unsafe + FFI module of the Rust course"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/cbloom"
+keywords = ["bloom-filter", "ffi", "unsafe", "c-abi", "bindgen"]
+categories = ["data-structures", "api-bindings"]
+readme = "README.md"
+build = "build.rs"
+
+# Three crate types from one source:
+#   - "lib"       (rlib): so tests, benches, and Rust consumers can `use cbloom`.
+#   - "cdylib":   a C-callable shared library (libcbloom.so / .dylib / .dll) for
+#                 the Python ctypes consumer and dynamic linking from C.
+#   - "staticlib": a C-callable static archive (libcbloom.a) for static linking
+#                 from the C consumer.
+# The `extern "C"` surface in `src/ffi.rs` is what these last two export.
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bench]]
+name = "bloom"
+harness = false
+
+# A release profile worth shipping a C library with: cross-crate inlining via
+# LTO and a single codegen unit. We keep unwinding (no `panic = "abort"`) on
+# purpose — `src/ffi.rs` relies on `catch_unwind` to stop a Rust panic from
+# unwinding across the C frame (that would be UB). See Pill 9.
+[profile.release]
+lto = true
+codegen-units = 1
+
+[dependencies]
+# Intentionally none. The core is pure std; the FFI types come from
+# `core::ffi` / `std::ffi` (`c_char`, `CStr`, `CString`). Adding `libc` buys
+# nothing here and the point is to see the raw boundary with no helper crate.
+
+[dev-dependencies]
+# The benchmark is sync and CPU-bound (hashing + bit probes), so plain
+# criterion with warm-up and `black_box`.
+criterion = "0.5"
+
+# --- Optional: calling C *from* Rust (the "vice versa" direction, Pill 11) ---
+# Enable with `--features cffi`. This pulls in `cc` (compile the bundled
+# `cbits/fnv.c`) and `bindgen` (generate Rust bindings for it at build time)
+# and lights up `src/sys.rs`. Default builds need neither tool nor libclang,
+# so `cargo check` / `cargo test` work out of the box.
+[features]
+cffi = ["dep:cc", "dep:bindgen"]
+
+[build-dependencies]
+cc = { version = "1", optional = true }
+bindgen = { version = "0.70", optional = true }
