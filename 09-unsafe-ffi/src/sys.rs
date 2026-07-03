@@ -8,7 +8,12 @@
 //! pointer and length describe a valid byte range"), so the rest of the program
 //! never touches `unsafe`.
 
-#![allow(non_upper_case_globals, non_camel_case_types, non_snake_case, dead_code)]
+#![allow(
+    non_upper_case_globals,
+    non_camel_case_types,
+    non_snake_case,
+    dead_code
+)]
 
 // The generated bindings: `pub fn cbloom_fnv1a64(data: *const u8, len: usize) ->
 // u64;` inside an `extern "C"` block. (In a default build this file isn't
@@ -22,12 +27,8 @@ include!(concat!(env!("OUT_DIR"), "/fnv_bindings.rs"));
 /// C. The `unsafe` is justified because a `&[u8]` *always* gives a valid
 /// `(ptr, len)` for its whole length, which is exactly the C function's
 /// precondition.
-///
-/// TODO (stretch / step 7): call the bound `cbloom_fnv1a64` inside an `unsafe`
-/// block, passing `data.as_ptr()` and `data.len()`. See the Pill 11 hint.
 pub fn fnv1a_64(data: &[u8]) -> u64 {
-    let _ = data;
-    todo!("sys.rs: in an unsafe block, call cbloom_fnv1a64(data.as_ptr(), data.len())")
+    unsafe { cbloom_fnv1a64(data.as_ptr(), data.len()) }
 }
 
 #[cfg(test)]

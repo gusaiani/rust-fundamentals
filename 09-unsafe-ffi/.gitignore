@@ -4,5 +4,7 @@ consumers/consumer
 consumers/*.o
 __pycache__/
 *.pyc
+# Node consumer dependencies (koffi); reinstall with `npm install --prefix consumers`
+consumers/node_modules/
 # generated header, if you regenerate it with cbindgen into a scratch path
 /include/cbloom.generated.h
