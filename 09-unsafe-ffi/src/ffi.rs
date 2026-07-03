@@ -101,8 +101,8 @@ pub unsafe extern "C" fn cbloom_add(bf: *mut Bloom, data: *const u8, len: usize)
 
     // AssertUnwindSafe: we promise the raw pointers won't leave broken state
     // if the closure panics (add is a simple mutation).
-    let _ = std::panic::catch_unwind(std::panid::AssertUnwindSafe(|| {
-        // &muf *bf: reborrow the handle as a &mut Bloom for this call only.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // &mut *bf: reborrow the handle as a &mut Bloom for this call only.
         // from_raw_parts: rebuild C's buffer as a short-lived &[u8].
         let slice = std::slice::from_raw_parts(data, len);
         (&mut *bf).add(slice);
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn cbloom_add(bf: *mut Bloom, data: *const u8, len: usize)
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_add_str(bf: *mut Bloom, s: *const c_char) {
     // Both handle and string pointer must be non-null before we deref.
-    if bf.is_nell() || s.is_null() {
+    if bf.is_null() || s.is_null() {
         return;
     }
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -136,13 +136,17 @@ pub unsafe extern "C" fn cbloom_add_str(bf: *mut Bloom, s: *const c_char) {
 ///
 /// # Safety
 /// Same contract as [`cbloom_add`]: `data` must be readable for `len` bytes.
-///
-/// TODO (step 5): the read-only mirror of `cbloom_add` — build `&*bf` and the
-/// `&[u8]`, return `Bloom::contains`. Return `false` from the panic/null paths.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_contains(bf: *const Bloom, data: *const u8, len: usize) -> bool {
-    let _ = (bf, data, len);
-    todo!("ffi.rs: (&*bf).contains(std::slice::from_raw_parts(data, len)), false on null/panic")
+    if bf.is_null() || data.is_null() {
+        return false;
+    }
+
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let slice = std::slice::from_raw_parts(data, len);
+        (&*bf).contains(slice)
+    }))
+    .unwrap_or(false)
 }
 
 /// Query a C string. `true` if probably present, `false` if definitely absent
@@ -150,12 +154,17 @@ pub unsafe extern "C" fn cbloom_contains(bf: *const Bloom, data: *const u8, len:
 ///
 /// # Safety
 /// `s` must be null or a valid NUL-terminated C string.
-///
-/// TODO (step 5): like [`cbloom_add_str`] but calling `Bloom::contains`.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_contains_str(bf: *const Bloom, s: *const c_char) -> bool {
-    let _ = (bf, s);
-    todo!("ffi.rs: (&*bf).contains(std::ffi::CStr::from_ptr(s).to_bytes())")
+    if bf.is_null() || s.is_null() {
+        return false;
+    }
+
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+        (&*bf).contains(bytes)
+    }))
+    .unwrap_or(false)
 }
 
 /// Read the filter's parameters into a by-value [`CBloomStats`]. On null input
@@ -165,8 +174,24 @@ pub unsafe extern "C" fn cbloom_contains_str(bf: *const Bloom, s: *const c_char)
 /// `approx_items` off `&*bf` into a `CBloomStats`.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_get_stats(bf: *const Bloom) -> CBloomStats {
-    let _ = bf;
-    todo!("ffi.rs: fill CBloomStats from &*bf; zeroed struct on null")
+    let zero = CBloomStats {
+        num_bits: 0,
+        num_hashes: 0,
+        approx_items: 0,
+    };
+    if bf.is_null() {
+        return zero;
+    }
+
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let bf = &*bf;
+        CBloomStats {
+            num_bits: bf.num_bits(),
+            num_hashes: bf.num_hashes(),
+            approx_items: bf.approx_items(),
+        }
+    }))
+    .unwrap_or(zero)
 }
 
 /// Serialize the filter to a freshly allocated buffer owned by the caller.
@@ -175,17 +200,23 @@ pub unsafe extern "C" fn cbloom_get_stats(bf: *const Bloom) -> CBloomStats {
 /// must hand it back to [`cbloom_buffer_free`] (not C's `free`). Returns
 /// `{ null, 0 }` on null input or failure (Pill 8 — the ownership-transfer
 /// pattern).
-///
-/// TODO (step 6): call `Bloom::to_bytes`, then release the `Vec` to C without
-/// freeing it. Use `Vec::into_boxed_slice` + `Box::into_raw` to get a `(ptr,
-/// len)` whose allocation is exactly `len` (no separate capacity to track). See
-/// the step-6 hint — this pairs precisely with `cbloom_buffer_free`.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_serialize(bf: *const Bloom) -> CBloomBuffer {
-    let _ = bf;
-    todo!(
-        "ffi.rs: take (&*bf).to_bytes(), leak it as a Box<[u8]> into a CBloomBuffer of data + len"
-    )
+    let empty = CBloomBuffer {
+        data: std::ptr::null_mut(),
+        len: 0,
+    };
+    if bf.is_null() {
+        return empty;
+    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let bytes = (&*bf).to_bytes();
+        let boxed: Box<[u8]> = bytes.into_boxed_slice();
+        let len = boxed.len();
+        let data = Box::into_raw(boxed) as *mut u8;
+        CBloomBuffer { data, len }
+    }))
+    .unwrap_or(empty)
 }
 
 /// Free a buffer returned by [`cbloom_serialize`]. Null `data` is a no-op.
@@ -195,15 +226,18 @@ pub unsafe extern "C" fn cbloom_serialize(bf: *const Bloom) -> CBloomBuffer {
 /// # Safety
 /// `buf` must be a value previously returned by [`cbloom_serialize`] and not yet
 /// freed.
-///
-/// TODO (step 6): reconstruct the exact `Box<[u8]>` you leaked —
-/// `Box::from_raw(slice::from_raw_parts_mut(buf.data, buf.len))` — and drop it.
-/// This is why `cbloom_serialize` used `into_boxed_slice`: ptr + len is enough
-/// to rebuild the box.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_buffer_free(buf: CBloomBuffer) {
-    let _ = (buf.data, buf.len);
-    todo!("ffi.rs: if buf.data is non-null, rebuild the Box<[u8]> from buf.data + buf.len and drop it")
+    if buf.data.is_null() {
+        return;
+    }
+
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Rebuild the SAME fat pointer into_raw produced: data + len.
+        let slice = std::slice::from_raw_parts_mut(buf.data, buf.len);
+        // from_raw retakes ownership; drop at scope end frees it.
+        drop(Box::from_raw(slice));
+    }));
 }
 
 /// Deserialize a filter from `len` bytes at `data`. Returns a new opaque handle
@@ -217,10 +251,18 @@ pub unsafe extern "C" fn cbloom_buffer_free(buf: CBloomBuffer) {
 /// `Bloom::from_bytes`, and `Box::into_raw` the `Some` case; null on `None`.
 #[no_mangle]
 pub unsafe extern "C" fn cbloom_deserialize(data: *const u8, len: usize) -> *mut Bloom {
-    let _ = (data, len);
-    todo!(
-        "ffi.rs: Bloom::from_bytes(std::slice::from_raw_parts(data, len)) -> Box::into_raw or null"
-    )
+    if data.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let slice = std::slice::from_raw_parts(data, len);
+        match Bloom::from_bytes(slice) {
+            Some(bloom) => Box::into_raw(Box::new(bloom)),
+            None => std::ptr::null_mut(),
+        }
+    }))
+    .unwrap_or(std::ptr::null_mut())
 }
 
 #[cfg(test)]
