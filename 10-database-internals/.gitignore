@@ -1,0 +1,4 @@
+/target
+# scratch stores created by hand while playing with the CLI
+/data
+/*.db

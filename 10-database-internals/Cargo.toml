@@ -1,0 +1,45 @@
+[package]
+name = "lsmkv"
+version = "0.1.0"
+edition = "2021"
+description = "A crash-safe, LSM-tree embedded key-value store: write-ahead log, memtable, immutable SSTables, compaction, and WAL recovery that survives a mid-write crash — the database-internals module of the Rust course"
+license = "MIT OR Apache-2.0"
+# TODO: replace with your own GitHub URL.
+repository = "https://github.com/your-username/lsmkv"
+keywords = ["lsm-tree", "key-value-store", "wal", "storage-engine", "database"]
+categories = ["database-implementations", "data-structures"]
+readme = "README.md"
+
+# A library (the storage engine) plus a small CLI (`src/bin/kv.rs`) that drives
+# it, so you can `put`/`get`/`del`/`scan`/`compact` a real on-disk store from the
+# shell and watch the files appear, flush, and merge.
+[lib]
+name = "lsmkv"
+
+[[bin]]
+name = "kv"
+path = "src/bin/kv.rs"
+
+[[bench]]
+name = "kv"
+harness = false
+
+# A release profile worth shipping a storage engine with: cross-crate inlining
+# via LTO and a single codegen unit. The hot paths are encoding/decoding records
+# and CRC over every WAL frame, so this matters for the benchmark.
+[profile.release]
+lto = true
+codegen-units = 1
+
+[dependencies]
+# Intentionally none. The whole engine is pure std: `std::fs`, `std::io`,
+# `std::collections::BTreeMap`, and `std::os::unix::fs::FileExt` for positioned
+# reads (`pread`). The CRC32 and the on-disk record/SSTable formats are written
+# by hand in `src/encoding.rs` so you can see exactly what hits the disk — no
+# `crc32fast`, no `bincode`, no framing crate hiding the bytes.
+
+[dev-dependencies]
+# `criterion` for the put/get benchmarks; `tempfile` so tests and benches get a
+# throwaway directory that's cleaned up even if they panic.
+criterion = "0.5"
+tempfile = "3"
