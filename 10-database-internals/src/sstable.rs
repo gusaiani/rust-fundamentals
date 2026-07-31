@@ -130,7 +130,7 @@ impl SsTable {
         data.extend_from_slice(&index_offset.to_le_bytes()); // u64: where the index starts
         data.extend_from_slice(&index_len.to_le_bytes()); // u64: how long the index is
         data.extend_from_slice(&(index.len() as u64).to_le_bytes()); // u64: record count
-        data.extend_from_slice(&max_seq.to_le_bytes()); // u6: high-water seq
+        data.extend_from_slice(&max_seq.to_le_bytes()); // u8: high-water seq
         data.extend_from_slice(&SST_MAGIC.to_le_bytes()); // u32: format marker
 
         let final_path = sst_path(dir, id);
@@ -159,8 +159,56 @@ impl SsTable {
     ///    into a `Vec<IndexEntry>` (it's already sorted by key on disk).
     /// 4. Return the [`SsTable`] holding the file, the index, and `max_seq`.
     pub fn open(path: &Path, id: u64) -> Result<SsTable> {
-        let _ = (path, id);
-        todo!("Step 3b: read+validate footer, load the index vec, keep the file handle")
+        let file = File::open(path)?;
+        let file_len = file.metadata()?.len();
+
+        if file_len < FOOTER_SIZE {
+            return Err(Error::Corrupt(format!(
+                "file {} is only {file_len} bytes, shorter than the {FOOTER_SIZE}-byte footer",
+                path.display()
+            )));
+        }
+
+        // The footer is the last FOOTER_SIZE bytes; read them with the given helper.
+        let footer = read_exact_at(&file, file_len - FOOTER_SIZE, FOOTER_SIZE as usize)?;
+
+        let index_offset = u64::from_le_bytes(footer[0..8].try_into().unwrap());
+        let index_len = u64::from_le_bytes(footer[8..16].try_into().unwrap());
+        let count = u64::from_le_bytes(footer[16..24].try_into().unwrap());
+        let max_seq = u64::from_le_bytes(footer[24..32].try_into().unwrap());
+        let magic = u32::from_le_bytes(footer[32..36].try_into().unwrap());
+
+        if magic != SST_MAGIC {
+            return Err(Error::Corrupt(format!(
+                "bad magic {magic:#010x} in {} (expected {SST_MAGIC:#010x})",
+                path.display()
+            )));
+        }
+
+        let index_bytes = read_exact_at(&file, index_offset, index_len as usize)?;
+
+        let mut index: Vec<IndexEntry> = Vec::with_capacity(count as usize);
+        let mut pos = 0;
+        while pos < index_bytes.len() {
+            let klen = u32::from_le_bytes(index_bytes[pos..pos + 4].try_into().unwrap()) as usize;
+            pos += 4;
+            let key = index_bytes[pos..pos + klen].to_vec();
+            pos += klen;
+            let offset = u64::from_le_bytes(index_bytes[pos..pos + 8].try_into().unwrap());
+            pos += 8;
+            let len = u32::from_le_bytes(index_bytes[pos..pos + 4].try_into().unwrap());
+            pos += 4;
+
+            index.push(IndexEntry { key, offset, len });
+        }
+
+        Ok(SsTable {
+            id,
+            file,
+            index,
+            data_len: index_offset,
+            max_seq,
+        })
     }
 
     /// Look up `key`: return its newest record in *this* table, or `None`.
@@ -174,8 +222,27 @@ impl SsTable {
     /// Note this returns the raw [`Record`] (which may be a tombstone); it's the
     /// [`crate::db::Db`] read path that decides a tombstone means "not found".
     pub fn get(&self, key: &[u8]) -> Result<Option<Record>> {
-        let _ = key;
-        todo!("Step 4: binary-search the index, pread the record, decode it")
+        // Compare entry-vs-needle, in that order: binary_search_by wants
+        // Less when the probed element sorts before the target
+        let slot = self
+            .index
+            .binary_search_by(|entry| entry.key.as_slice().cmp(key));
+
+        let entry = match slot {
+            Ok(i) => &self.index[i],
+            Err(_) => return Ok(None), // key isn't in this table
+        };
+
+        let bytes = self.read_at(entry.offset, entry.len as usize)?;
+
+        let (record, _consumed) = Record::decode(&bytes).ok_or_else(|| {
+            Error::Corrupt(format!(
+                "bad record at offset {} in sstable {}",
+                entry.offset, self.id
+            ))
+        })?;
+
+        Ok(Some(record))
     }
 
     /// Every record in the table, in key order. Used by compaction and scans.
@@ -186,7 +253,19 @@ impl SsTable {
     /// `Record::decode`, advancing by the reported consumed length each time
     /// until the buffer is exhausted.
     pub fn iter(&self) -> Result<Vec<Record>> {
-        todo!("Step 3c: pread the data region, decode records back-to-back into a Vec")
+        let data = self.read_at(0, self.data_len as usize)?;
+
+        let mut records = Vec::with_capacity(self.index.len());
+        let mut pos = 0;
+        while pos < data.len() {
+            let (record, consumed) = Record::decode(&data[pos..]).ok_or_else(|| {
+                Error::Corrupt(format!("bad record at offset {pos} in sstable {}", self.id))
+            })?;
+            records.push(record);
+            pos += consumed; // decode reports exactly how many bytes it ate
+        }
+
+        Ok(records)
     }
 
     /// The highest sequence number stored in this table. **Given** (from the
@@ -210,7 +289,6 @@ impl SsTable {
     /// helper** — use it from `get`/`iter`/`open`. Wraps a short read as a
     /// `Corrupt` error, since a well-formed SSTable is never shorter than its own
     /// footer says.
-    #[allow(dead_code)] // used by your `get`/`iter` in Steps 3–4
     pub(crate) fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
         read_exact_at(&self.file, offset, len)
     }
@@ -219,7 +297,6 @@ impl SsTable {
 /// Read exactly `len` bytes at `offset`, erroring if the file is too short.
 /// **Given** free function so `SsTable::open` (which has no `self` yet) can use
 /// it too.
-#[allow(dead_code)] // used by `SsTable::open` (Step 3b) and `read_at`
 pub(crate) fn read_exact_at(file: &File, offset: u64, len: usize) -> Result<Vec<u8>> {
     let mut buf = vec![0u8; len];
     file.read_exact_at(&mut buf, offset)

@@ -43,11 +43,15 @@ use crate::sstable::SsTable;
 /// the `seq` on each record already encodes global write order, so "highest seq
 /// wins" is correct no matter what order you visit the tables in.
 pub fn compact(dir: &Path, new_id: u64, tables: &[SsTable]) -> Result<PathBuf> {
-    let _ = (dir, new_id, tables, ValueKind::Delete);
-    todo!(
-        "Step 7: gather all records, keep highest-seq per key, drop surviving tombstones, \
-         then SsTable::write the sorted survivors"
-    )
+    let mut records = Vec::new();
+    for table in tables {
+        records.extend(table.iter()?);
+    }
+
+    let mut survivors = newest_per_key(records);
+    survivors.retain(|rec| rec.value != ValueKind::Delete);
+
+    SsTable::write(dir, new_id, &survivors)
 }
 
 /// Reduce a batch of records to the newest per key, tombstones included. A

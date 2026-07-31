@@ -40,7 +40,9 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Options { memtable_flush_bytes: 1 << 20 } // 1 MiB
+        Options {
+            memtable_flush_bytes: 1 << 20,
+        } // 1 MiB
     }
 }
 
@@ -114,18 +116,31 @@ impl Db {
         let next_sst_id = ids.last().map(|m| m + 1).unwrap_or(0);
         let wal_path = dir.join("wal.log");
 
-        // --- your Step 5: replay the WAL and restore the sequence high-water mark ---
-        let _ = (&wal_path, &sstables, &opts, next_sst_id);
-        todo!(
-            "Step 5: replay wal.log into a fresh MemTable, open the live Wal, \
-             set seq = 1 + max(seq across replayed records and every sstable.max_seq()), \
-             then build the Db"
-        )
+        let replayed = Wal::replay(&wal_path)?;
+
+        let mut mem = MemTable::new();
+        for record in replayed.iter().cloned() {
+            mem.insert(record);
+        }
+
+        let max_wal_seq = replayed.iter().map(|rec| rec.seq).max().unwrap_or(0);
+        let max_sst_seq = sstables.iter().map(|sst| sst.max_seq()).max().unwrap_or(0);
+        let seq = max_wal_seq.max(max_sst_seq) + 1;
+
+        let wal = Wal::open(&wal_path)?;
+
+        Ok(Db {
+            dir,
+            wal,
+            mem,
+            sstables,
+            seq,
+            next_sst_id,
+            opts,
+        })
     }
 
     /// Fetch the current value for `key`, or `None` if absent or deleted.
-    /// **Step 6a — your code.**
-    ///
     /// Check sources newest → oldest and stop at the first that knows the key:
     /// 1. the memtable ([`MemTable::get`]);
     /// 2. then each SSTable in `self.sstables` (already newest-first).
@@ -135,8 +150,23 @@ impl Db {
     /// tombstone return `None` **without** consulting older tables. If nothing
     /// has the key, `None`.
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        let _ = key;
-        todo!("Step 6a: memtable first, then sstables newest-first; first hit wins; tombstone => None")
+        if let Some(record) = self.mem.get(key) {
+            return match &record.value {
+                ValueKind::Put(bytes) => Ok(Some(bytes.clone())),
+                ValueKind::Delete => Ok(None),
+            };
+        }
+
+        for table in &self.sstables {
+            if let Some(record) = table.get(key)? {
+                return match record.value {
+                    ValueKind::Put(bytes) => Ok(Some(bytes)),
+                    ValueKind::Delete => Ok(None),
+                };
+            }
+        }
+
+        Ok(None)
     }
 
     /// Insert or overwrite `key -> value`. **Step 6b — your code.**
@@ -152,8 +182,16 @@ impl Db {
     /// Do **not** reorder 3 and 4: applying to the memtable before the WAL is
     /// synced is the classic lost-write bug.
     pub fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
-        let _ = (key, value);
-        todo!("Step 6b: next seq, WAL append+sync, memtable insert, maybe_flush")
+        let seq = self.seq;
+        self.seq += 1;
+
+        let record = Record::put(seq, key.to_vec(), value.to_vec());
+
+        self.wal.append(&record)?;
+        self.wal.sync()?;
+
+        self.mem.insert(record);
+        self.maybe_flush()
     }
 
     /// Delete `key` by writing a tombstone. **Step 6c — your code.**
@@ -162,14 +200,18 @@ impl Db {
     /// *not* remove anything from disk here — the tombstone shadows older values
     /// until a compaction physically drops them (Pill 6).
     pub fn delete(&mut self, key: &[u8]) -> Result<()> {
-        let _ = key;
-        todo!("Step 6c: next seq, WAL append+sync of a tombstone, memtable insert, maybe_flush")
+        let seq = self.seq;
+        self.seq += 1;
+
+        let record = Record::tombstone(seq, key.to_vec());
+
+        self.wal.append(&record)?;
+        self.wal.sync()?;
+        self.mem.insert(record);
+
+        self.maybe_flush()
     }
 
-    /// Write the memtable out as a new immutable SSTable, then reset the WAL.
-    /// **Step 6d — your code.**
-    ///
-    /// 1. If the memtable is empty, there's nothing to do — return.
     /// 2. Collect `self.mem.records()` (already key-sorted) into a `Vec`.
     /// 3. `SsTable::write(&self.dir, self.next_sst_id, &records)` — this fsyncs
     ///    the new file and its directory entry, so the data is now durable on
@@ -181,7 +223,19 @@ impl Db {
     ///    in the SSTable, so the log can be truncated (Pill 9). Reset before the
     ///    SSTable is durable and a crash in between loses those writes.
     pub fn flush(&mut self) -> Result<()> {
-        todo!("Step 6d: write sorted memtable -> new SSTable (durable), swap it in, clear memtable, THEN reset WAL")
+        if self.mem.is_empty() {
+            return Ok(());
+        }
+
+        let records: Vec<Record> = self.mem.records().cloned().collect();
+        let path = SsTable::write(&self.dir, self.next_sst_id, &records)?;
+
+        let table = SsTable::open(&path, self.next_sst_id)?;
+        self.sstables.insert(0, table);
+        self.next_sst_id += 1;
+
+        self.mem.clear();
+        self.wal.reset()
     }
 
     /// Merge all SSTables into one, dropping shadowed versions and tombstones.
